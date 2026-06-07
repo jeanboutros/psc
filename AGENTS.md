@@ -7,6 +7,52 @@
 | Name | PSC — Politburo Standing Committee |
 | Repository | opencode-workflow |
 | License | MIT |
+| Role | **Upstream source-of-truth for the OpenCode workflow system.** The agents, skills, and pipeline definitions in this repository are installed into downstream projects via `install.sh`. Changes made here propagate to all projects using this workflow. |
+
+## What PSC Provides
+
+PSC is **not** a project that ships application code. It is the **workflow engine** — the agents, skills, pipeline state machine, compliance gates, and passport system that downstream projects install. Downstream projects (e.g. tian-er) add their own application code, design documents, and project-specific AGENTS.md sections on top of this workflow foundation.
+
+### Upstream Artifacts (propagate to all downstream projects)
+
+These files are the workflow definition. Changes here MUST be considered for propagation:
+
+| Artifact | Installed to | Scope |
+|----------|-------------|-------|
+| `agents/*.md` | `.opencode/agents/` | Agent role definitions, permission blocks, dispatch envelopes |
+| `skills/core/*/SKILL.md` | `.opencode/skills/<name>/SKILL.md` | Core skill definitions |
+| `skills/domain/*/SKILL.md` | `.opencode/skills/<name>/SKILL.md` | Domain-specific skill definitions |
+| `skills/core/pipeline/SKILL.md` | `.opencode/skills/pipeline/SKILL.md` | Pipeline state machine, enforcement protocol, routing table |
+| `skills/core/pipeline-passport/SKILL.md` | `.opencode/skills/pipeline-passport/SKILL.md` | Passport format and rules |
+| `skills/core/compliance-gate/SKILL.md` | `.opencode/skills/compliance-gate/SKILL.md` | Tiered compliance gate definitions |
+| **Pipeline rules in AGENTS.md** | AGENTS.md (relevant sections) | Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, Pipeline Enforcement Protocol |
+| `scripts/*` | `docs/pipeline/scripts/`, `docs/project-management/` | T1 checks, next-id, counters |
+| `docs/pipeline.md` | `docs/pipeline.md` | Human-facing pipeline specification |
+| `install.sh` | N/A (run from PSC repo) | Installation script |
+
+### PSC-Only Artifacts (do NOT propagate)
+
+These are specific to the PSC repository itself and never propagate to downstream projects:
+
+| Artifact | Why PSC-only |
+|----------|-------------|
+| PSC's `README.md` | Downstream projects have their own README |
+| PSC's `AGENTS.md` Project Identity section | Downstream projects have their own identity |
+| PSC's `AGENTS.md` Tech Stack section | Downstream projects define their own tech stack |
+| PSC's `AGENTS.md` Skill Registry | The registry describes installed skills — downstream AGENTS.md may differ |
+| PSC's `AGENTS.md` Commit Rules | Downstream projects define their own commit conventions |
+| PSC-specific directories | `docs/learning/`, test fixtures, etc. |
+
+### Downstream Propagation Protocol
+
+When changes are made to upstream artifacts in PSC, a request may be made to apply the same changes to downstream projects. When performing such propagation:
+
+1. **Propagate all pipeline rule changes** — changes to the Pipeline Enforcement Protocol, dispatch envelope format, passport rules, compliance gates, and agent permission blocks MUST be applied to downstream projects' counterparts.
+2. **Propagate agent/skill file changes** — if `agents/supreme-leader.md` or `agents/pm.md` changed, apply the same changes to the downstream `.opencode/agents/` copies. If a core skill changed, propagate it.
+3. **Propagate relevant AGENTS.md rules** — the Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, and Pipeline Enforcement rules in AGENTS.md propagate. PSC-only sections (Project Identity, Tech Stack, Skill Registry) do NOT propagate.
+4. **Do NOT overwrite project-specific customizations** — downstream projects may have customized their AGENTS.md with project principles, naming conventions, design document structures, etc. Only add or update the pipeline-related rules; never remove project-specific content.
+5. **Respect downstream directory structure** — if the downstream project nests files under `.opencode/` (as the install script does), use those paths. Do not assume top-level `agents/` or `skills/core/` directories.
+6. **Verify permission blocks after propagation** — after updating an agent file, run the Permission Validation Rule check to confirm the downstream agent's permissions still match its declared role.
 
 ---
 
@@ -160,8 +206,48 @@ This includes but is not limited to:
 - **Pipeline routing table** (`skills/core/pipeline/SKILL.md`) — update when agents or intents change
 - **Pipeline passport template** — update when pipeline steps change
 - **docs/pipeline.md** — update when compliance tiers, gates, or dispatch rules change
+- **Agent permission blocks** — validate `edit`/`bash` against agent role per the Permission Validation Rule below
 
 If a change touches multiple docs, each doc update may be bundled with the triggering change when they are tightly coupled (per the Commit Granularity rule).
+
+### Post-Change Verification Checklist
+
+After every change, before considering the task complete, the agent MUST run this checklist:
+
+- [ ] **AGENTS.md** — Did I add or remove a skill? Update the Skill Registry. Did I create or change an agent? Run the Permission Validation Rule check.
+- [ ] **docs/pipeline.md** — Did I change a gate, tier, dispatch rule, or enforcement protocol? Update this doc.
+- [ ] **skills/core/pipeline/SKILL.md** — Did I add or change an agent intent? Update the routing table. Did pipeline steps change? Update the passport template reference.
+- [ ] **skills/core/pipeline-passport/SKILL.md** — Did I add or remove a pipeline step? Update the Required Steps template.
+- [ ] **README.md** — Did I create, delete, or rename a file? Update the Review & Test Status tables.
+- [ ] **Agent `permission:` block** — Did I create or change an agent? Validate `edit`/`bash` against the Permission Validation Rule. This is not optional — dispatch-only agents with `edit: allow` are a structural defect.
+
+If a checklist item doesn't apply, mark it `N/A`. If you skip an item without justification, the change is incomplete.
+
+---
+
+## Agent Permission Validation Rule
+
+**Every agent's `permission:` block must match its declared role. Mismatches are a structural defect.**
+
+When creating or modifying an agent file, validate these constraints:
+
+| If the agent's Role says... | Then `permission.edit` must be... | And `permission.bash` must be... |
+|-----------------------------|-----------------------------------|----------------------------------|
+| Dispatch-only / orchestrator / "never executes work" / "never writes code" | `deny` | `deny` |
+| Read-only reviewer (does not produce code) | `deny` | `allow` (for building/documenting) |
+| Task management only (PM) | `allow` (only for management files) | `allow` |
+| Code-producing agent (Code Architect, UI Engineer) | `allow` | `allow` |
+| Security reviewer / test engineer | `allow` | `allow` |
+
+**Default denial for dispatch-only agents:** Any agent with "DISPATCH-ONLY" in its role description, or whose constraints say "Can edit code: No", MUST have `permission.edit: deny` and `permission.bash: deny` in its YAML frontmatter.
+
+**The check:** After any agent file change, verify:
+1. The permission block is present in the YAML frontmatter
+2. `edit` matches the agent's declared capabilities (if "never writes code" → `deny`)
+3. `bash` matches the agent's declared capabilities (if "coordination only" → `deny`)
+4. The `Constraints` section in the body does not contradict the YAML permissions
+
+This rule exists because advisory text ("I should not write code") is insufficient — the YAML permission block is the runtime enforcement. A dispatch-only orchestrator with `edit: allow` is a breach vector for bypassing the pipeline.
 
 ---
 
