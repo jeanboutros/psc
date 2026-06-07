@@ -126,6 +126,8 @@ Produced by the `post-rejection-correction` skill. One record per retry. Require
 
 ## Mandatory Rules
 
+**These rules are non-negotiable. They are enforced by the Supreme Leader's Pre-Dispatch Gate (see `skills/core/pipeline/SKILL.md § Pipeline Enforcement Protocol`). Any agent receiving a dispatch without a valid passport MUST return `STATUS: BLOCKED`. No work proceeds without a passport.**
+
 ### Rule 1: No Step Without a Stamp
 
 Every step in the Required Steps section must be checked off with a timestamp and result before the next step can begin. An agent receiving a task where a previous step is un-checked must:

@@ -179,6 +179,46 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 
 ---
 
+## Pipeline Enforcement Protocol
+
+The pipeline is **not advisory**. It is **mandatory**. The Supreme Leader MUST enforce these rules before every dispatch. No exceptions.
+
+### Pre-Dispatch Gate (Non-Skippable)
+
+Before the Supreme Leader classifies intent or routes to any agent, it MUST execute this gated sequence:
+
+| Gate Step | Check | Failure Action |
+|-----------|-------|----------------|
+| **PM Gate** | If new task: passport must be created by PM before any routing. Supreme Leader dispatches to `@pm` with `trigger: "create-passport"` and waits. | BLOCKED — no routing until passport exists. |
+| **Passport Exists** | Passport file at `docs/project-management/passports/<ticket-id>-passport.md` exists on disk. | BLOCKED — dispatch to PM for passport creation. |
+| **Prior Steps Stamped** | All steps before target step have timestamps and results in Step Log. | BLOCKED — route to missing step's agent. |
+| **Gate Results Recorded** | If at a gate, Gate Results table has current attempt entries. | BLOCKED — run gate first. |
+| **Skips Justified** | Any unchecked Required Step has corresponding Skipped Steps entry with authorisation. | BLOCKED — require authorisation. |
+| **Correction Records** | If retry_count > 0 for any tier, Correction Record exists in passport. | BLOCKED — dispatch to producing agent for post-rejection-correction. |
+
+### Role Separation Rules
+
+| Rule | Enforcement |
+|------|-------------|
+| Only PM creates passports | Supreme Leader MUST NOT create passport files. If none exists, dispatch to PM and wait. |
+| Only PM creates tickets | Supreme Leader MUST NOT create task entries in TODO.md or ticket files. |
+| Supreme Leader is dispatch-only | Supreme Leader MUST NOT perform specialist work. If a specialist fails, report to user — do not fill in. |
+| No combined PM + Supreme Leader | These roles operate at different steps. The envelope must go PM → Supreme Leader, never both at once. |
+
+### Status Protocol
+
+When any enforcement check fails:
+
+```
+STATUS: BLOCKED
+Reason: <which check failed and why>
+Action Required: <what must happen to unblock>
+```
+
+The Supreme Leader must return this to the user immediately. Do NOT proceed to routing. Do NOT attempt to self-resolve.
+
+---
+
 ## Dispatch Envelope Format
 
 Every agent dispatch carries a structured envelope. This ensures context is preserved across handoffs.
