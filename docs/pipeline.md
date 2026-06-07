@@ -1,28 +1,24 @@
----
-name: pipeline
-description: "The agent-facing state machine for the ESP32 nRF24L01+ validation pipeline. Defines phases, gates, state transitions, agent routing, dispatch envelope format, and skill loading rules. All agents must follow this state machine."
----
+# PSC Pipeline — Full Specification
 
-# Pipeline State Machine
+> This is the deep dive. For the overview, see [../README.md](../README.md).
 
-## Purpose
+## The Politburo Standing Committee Model
 
-This skill defines the complete pipeline workflow that all agents must follow. It replaces `docs/pipeline/agents.md` as the agent-facing state machine document — agents read this skill, not the docs file, for workflow rules.
+> This is the deep dive. For the overview, see [../README.md](../README.md).
 
-## When to Trigger
+## The Standing Committee Model
 
-- **Always loaded** for all agents as part of the core skill set.
-- **Additionally triggered** when an agent needs to determine what phase it's in, what gate to run, or how to route work.
+PSC draws its execution philosophy from the efficiency of standing committees: small groups with clear mandates, rapid decision-making, and enforced accountability. Every agent has exactly one job. Every gate passes or fails objectively. No infinite review cycles, no scope creep, no "looks good to me" rubber stamps.
+
+The Supreme Leader is the orchestrator — it dispatches work, enforces protocol, and escalates when retries are exhausted. It never writes code, never designs, never decides technical questions. Those decisions belong to the specialist closest to the problem.
 
 ---
 
-## Phase Definitions
+## Phase A — Requirements & Design
 
-### Phase A — Requirements & Design
+**Goal:** Define and validate "What" and "How" before writing a single line of code.
 
-**Goal:** Define and validate "What" and "How" before writing code.
-
-**Sub-steps:**
+### Sub-steps
 
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
@@ -31,32 +27,53 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 | A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques | Supreme Leader orchestrates |
 | A3 | A-GATE | T3 + T-ARCH compliance check | All 6 specialists (T3), SW Engineer (T-ARCH) |
 
-**A-GATE pass criteria:** All 6 specialists issue APPROVED or CONDITIONAL PASS + T-ARCH passes.
-**A-GATE fail:** Any REJECTED → loop back to A1 with specific critique (max 3 loops at T3).
+### A-GATE Pass Criteria
 
-### Phase B — Build (PAU Loop)
+- All 6 specialists issue **APPROVED** or **CONDITIONAL PASS**
+- T-ARCH passes
+- On fail: loop back to A1 with specific critique (max 3 loops at T3)
+
+---
+
+## Phase B — Build (PAU Loop)
 
 **Goal:** Implement incrementally with self-validation, enforced by compliance gates.
 
-**Sub-steps:**
+### Sub-steps
 
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
 | B1 | PLAN | Read task, identify files, list acceptance criteria, declare logical units | Code Architect |
-| B2 | APPLY (per unit) | Implement one logical unit, run `idf.py build` | Code Architect |
+| B2 | APPLY (per unit) | Implement one logical unit, run build verification | Code Architect |
 | B2a | B-UNIT-GATE | T1 + T-ARCH compliance check after each unit | Code Architect (T1), SW Engineer (T-ARCH) |
-| B3 | VALIDATE | Full build, optional flash | Code Architect |
+| B3 | VALIDATE | Full build, optional flash test | Code Architect |
 | B3a | B-FINAL-GATE | T1 + T2 + T-ARCH compliance check after all units | Code Architect (T1), SW Engineer (T2 + T-ARCH) |
 
-**B-UNIT-GATE pass criteria:** All 8 T1 checks pass + T-ARCH passes.
-**B-FINAL-GATE pass criteria:** T1 passes + T2 passes + T-ARCH passes.
-**Failure routing:** T1 → Code Architect fixes; T2 → Code Architect + Software Engineer input; T-ARCH → Software Engineer.
+### B-UNIT-GATE Pass Criteria
 
-### Phase C — Multi-Agent Verify
+- All 8 T1 checks pass + T-ARCH passes
+- On fail: fix and retry (max 3× per tier)
+
+### B-FINAL-GATE Pass Criteria
+
+- T1 passes + T2 passes + T-ARCH passes
+- On fail: route to appropriate fixer (max 3× per tier)
+
+### The PAU Loop
+
+Each unit follows **Plan → Apply → Validate**:
+
+1. **Plan** — identify the unit, declare what changes are needed, list acceptance criteria
+2. **Apply** — implement the changes, run build verification
+3. **Validate** — run T1 checks, verify acceptance criteria, move to next unit or gate
+
+---
+
+## Phase C — Multi-Agent Verify
 
 **Goal:** Final check before commit. ALL specialist agents must approve.
 
-**Sub-steps:**
+### Sub-steps
 
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
@@ -65,13 +82,61 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 | C2 | Parallel Specialist Approval | All 6 specialists review independently | All 6 specialists |
 | C3 | C-GATE | T1 re-run + T3 + T-ARCH | Code Architect (T1), Specialists (T3), SW Engineer (T-ARCH) |
 
-**C-GATE pass criteria:** T1 passes + all 6 APPROVED + T-ARCH passes.
+### C-GATE Pass Criteria
+
+- T1 passes + all 6 APPROVED + T-ARCH passes
 
 ---
 
-## State Machine
+## Compliance Tiers
 
-### Complete State Transition Diagram
+Every gate checks one or more compliance tiers. Each tier has an **independent retry budget of 3**.
+
+### T1 — Mechanical (Automated)
+
+| # | Check | Criterion |
+|---|-------|-----------|
+| 1 | Build passes | `idf.py build` exits 0 |
+| 2 | No compiler warnings | `-Werror` is active; any warning is a failure |
+| 3 | Doxygen on all public API | Every public function/class/struct has `/** ... */` Doxygen |
+| 4 | No decision references in code | No `D-1:`, no "replaces the former..." |
+| 5 | No raw integers in public API | Finite-value fields use `enum class`, not `uint8_t` |
+| 6 | Reserved bits written as 0 | Register writes clear reserved bits |
+| 7 | File placement | Library code in `components/`, app code in `main/` |
+| 8 | Platform independence | Library headers include only `<cstdint>`, `<cstring>`, and own headers |
+
+### T2 — Architectural (Software Engineer)
+
+| # | Check | Criterion |
+|---|-------|-----------|
+| 1 | Platform boundary | All hardware access through `Hal` interface |
+| 2 | Namespace hygiene | Clean hierarchy, no pollution |
+| 3 | Typed enums | Every field with finite legal values uses `enum class` |
+| 4 | No mutable globals | Stateful singletons forbidden |
+| 5 | Build dependencies | Component dependencies correct and minimal |
+
+### T3 — Semantic (All 6 Specialists)
+
+All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
+- Software Engineer — architecture, API surface, SOLID
+- Hardware Engineer — datasheet fidelity, register correctness, timing
+- Wireless Expert — protocol compliance, channel mapping, modulation
+- Security Reviewer — attack surfaces, buffer safety, secrets handling
+- Test Engineer — test coverage, edge cases, static assertions
+- Docs Writer — documentation completeness, reference accuracy
+
+### T-ARCH — Structural & Principles
+
+| # | Check | Criterion |
+|---|-------|-----------|
+| 1 | Logical consistency | No contradictions within the design |
+| 2 | Structural soundness | No circular dependencies, clean layering |
+| 3 | Principle alignment | Follows project principles (typed API, RAII, etc.) |
+| 4 | Completeness | All requirements covered, no orphaned code |
+
+---
+
+## Compliance Gate State Machine
 
 ```
                                     ┌───────────────────────────────────────────────┐
@@ -92,7 +157,7 @@ This skill defines the complete pipeline workflow that all agents must follow. I
                                                │ with cri-│                   │T1+T-ARCH │ │
                                                │ tique)    │                   └────┬─────┘ │
                                                └──────────┘                        │       │
-                                                                                   │       │
+                                                                                       │
                                                          PASS ────────────────────┘       │
                                                                                            │
                                                                                    ┌───────▼──────┐
@@ -151,33 +216,33 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 
 ### State Transition Table
 
-| From State | Event | To State | Condition |
-|-----------|-------|----------|-----------|
+| From | Event | To | Condition |
+|------|-------|----|-----------|
 | A0 | Task defined | A1 | All agents have task spec |
 | A1 | Reviews complete | A2 | All 6 specialists reviewed |
 | A2 | Challenge complete | A3 | Synthesis produced |
-| A3 | A-GATE passes | B1 | All specialists APPROVED/CONDITIONAL PASS + T-ARCH passes |
-| A3 | A-GATE fails | A1 | REJECTED or T-ARCH fail; loop back with critique (max 3×) |
+| A3 | A-GATE passes | B1 | All APPROVED/CONDITIONAL PASS + T-ARCH passes |
+| A3 | A-GATE fails | A1 | REJECTED or T-ARCH fail; loop back (max 3×) |
 | B1 | Plan complete | B2 | Logical units identified |
 | B2 | Unit implemented | B2a | Build passes locally |
 | B2a | B-UNIT-GATE passes | B2 (next unit) | T1 + T-ARCH pass |
-| B2a | B-UNIT-GATE fails | B2 (fix) | T1 or T-ARCH fail; fix and retry (max 3× per tier) |
+| B2a | B-UNIT-GATE fails | B2 (fix) | T1 or T-ARCH fail; retry (max 3× per tier) |
 | B2 | All units done | B3a | All units pass B-UNIT-GATE |
 | B3a | B-FINAL-GATE passes | C0 | T1 + T2 + T-ARCH pass |
-| B3a | B-FINAL-GATE fails | B2 (fix) | Any tier fails; route to appropriate fixer (max 3× per tier) |
+| B3a | B-FINAL-GATE fails | B2 (fix) | Any tier fails (max 3× per tier) |
 | C0 | T1 re-run passes | C1 | All T1 checks pass |
-| C0 | T1 re-run fails | B2 (fix) | Code Architect fixes; re-run T1 (max 3×) |
+| C0 | T1 re-run fails | B2 (fix) | Code Architect fixes (max 3×) |
 | C1 | Challenge complete | C2 | Synthesis produced |
 | C2 | Reviews complete | C3 | All 6 specialists reviewed |
 | C3 | C-GATE passes | COMMIT | All APPROVED + T1 pass + T-ARCH pass |
-| C3 | C-GATE fails | C2 or B2 | Route to appropriate fixer (max 3× per tier) |
-| Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents full violation report to user |
+| C3 | C-GATE fails | C2 or B2 | Route to fixer (max 3× per tier) |
+| Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents violation report to user |
 
 ---
 
-## Dispatch Envelope Format
+## Dispatch Envelope
 
-Every agent dispatch carries a structured envelope. This ensures context is preserved across handoffs.
+Every agent dispatch carries a structured envelope:
 
 ```yaml
 ticket: "<task-id>"
@@ -207,12 +272,12 @@ OWASP_expansion: "<none | list of added compliance categories>"
 
 | Field | Description |
 |-------|-------------|
-| `ticket` | Unique task identifier from `docs/pipeline/TODO.md` |
+| `ticket` | Unique task identifier |
 | `phase` | Current pipeline phase (A, B, or C) |
 | `step` | Current step within the phase |
-| `trigger` | Why this dispatch occurred (e.g. "A-GATE failed: T3.1 datasheet fidelity") |
+| `trigger` | Why this dispatch occurred |
 | `agent` | The agent being dispatched to |
-| `skills_loaded` | List of skills loaded for this dispatch (always includes core skills) |
+| `skills_loaded` | Skills loaded for this dispatch (always includes core) |
 | `expected_outcomes` | Concrete, verifiable deliverables expected |
 | `next_agent` | Who receives the output next |
 | `retry_count` | Current retry count for each tier at the current gate |
@@ -220,27 +285,25 @@ OWASP_expansion: "<none | list of added compliance categories>"
 
 ---
 
-## Agent Routing Table
+## Agent Routing
 
-Which agent handles which intent:
-
-| Intent | Agent | Skills to Load |
-|--------|-------|---------------|
+| Intent | Agent | Key Skills |
+|--------|-------|------------|
 | Architecture design | Software Engineer | assumption-trap, compliance-gate, type-design-review |
-| Register model design | Hardware Engineer | assumption-trap, datasheet-verification, nrf24l01plus |
-| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, nrf24l01plus |
+| Register model design | Hardware Engineer | assumption-trap, datasheet-verification, domain |
+| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, domain |
 | Security analysis | Security Reviewer | assumption-trap, silent-failure, memory-safety |
 | Test strategy | Test Engineer | assumption-trap, test-driven-development |
 | Documentation plan | Docs Writer | assumption-trap, verification-before-completion |
-| Implementation | Code Architect | pau-loop, incremental-execution, nrf24l01plus, compliance-gate |
+| Implementation | Code Architect | pau-loop, incremental-execution, compliance-gate |
 | T1 compliance check | Code Architect | compliance-gate, verification-before-completion |
 | T2 architectural review | Software Engineer | compliance-gate, type-design-review |
 | T3 semantic review | All 6 specialists | compliance-gate, domain-specific skills |
 | T-ARCH review | Software Engineer | compliance-gate, type-design-review |
 | Gate orchestration | Supreme Leader | pipeline, compliance-gate, flag-protocol |
-| Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
+| Dispatch/routing | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
-| Debugging | Code Architect | systematic-debugging, nrf24l01plus |
+| Debugging | Code Architect | systematic-debugging, domain |
 
 ---
 
@@ -263,47 +326,38 @@ Used in **Phase A** (architecture) and **Phase C** (verification).
    - Contradictions → presented to user for decision
    - One-sided findings → accepted if well-evidenced, otherwise flagged
 
-### When to Invoke Dual-Model Challenge
+### When to Invoke
 
 | Scenario | Use Dual-Model? |
 |----------|-----------------|
 | New register implementation | Yes |
-| New protocol feature (whitening, CRC, etc.) | Yes |
+| New protocol feature | Yes |
 | HAL interface change | Yes |
 | Architecture change | Yes |
-| Bug fix in existing code | No (single pass sufficient) |
+| Bug fix in existing code | No (single pass) |
 | Documentation-only change | No |
 | Trivial refactor (rename, move) | No |
 
 ---
 
-## How to Read AGENTS.md and Load Domain Skills
+## Skill Loading Protocol
 
-### Tech Stack Reference
-
-Before starting any task, read `AGENTS.md` for:
-- **Multi-Agent Validation Pipeline** (Mandatory) — the 3-phase pipeline summary
-- **Key Rules** — no-assumption, PAU loop, datasheet truth, quality gate, incremental execution, flag protocol, compliance gates
-- **Code Documentation Rules** — Doxygen format requirements
-- **Hardware Register Library Design Principles** — typed enums, HAL abstract class, namespace structure
-- **nRF24L01+ Chip-Specific Traps** — critical hardware bugs
-- **Knowledge Management Rules** — learning doc creation requirements
-
-### Skill Loading Rules
-
-1. **Always loaded (core skills):** assumption-trap, compliance-gate, pipeline, pau-loop, verification-before-completion, self-audit-checklist, review-confidence, type-design-review, silent-failure
-2. **Domain skills (load based on task):** nrf24l01plus, datasheet-verification, memory-safety, ubertooth, nrf52840-sniffer, systematic-debugging, test-driven-development
-3. **Phase skills (load based on phase):** brainstorming (Phase A), incremental-execution (Phase B), grill-me (Phase A or C dual-model challenge)
-4. **Compliance expansion (load based on OWASP triggers):** Review task for new concern categories and load additional compliance checks as needed
-
-### Mandatory Skill Loading Order
+### Mandatory Loading Order
 
 When a task is dispatched, skills must be loaded in this order:
+
 1. `assumption-trap` — FIRST, always
 2. `compliance-gate` — tiered checks, OWASP expansion
 3. `pipeline` — this skill, state machine
 4. `pau-loop` — for Phase B work
 5. Domain-specific skills as needed
+
+### Skill Categories
+
+1. **Core skills** (always loaded): assumption-trap, compliance-gate, pipeline, pau-loop, verification-before-completion, self-audit-checklist, review-confidence, type-design-review, silent-failure
+2. **Domain skills** (loaded based on task): project-specific skills matching the tech stack
+3. **Phase skills** (loaded based on phase): brainstorming (Phase A), incremental-execution (Phase B), grill-me (Phase A or C Dual-Model Challenge)
+4. **Compliance expansion** (loaded based on OWASP triggers): review task for new concern categories and load additional compliance checks as needed
 
 ---
 
@@ -316,3 +370,19 @@ After any pipeline violation or gate failure, the responsible agent MUST ask:
 3. **Update the knowledge base** — Add the lesson to the relevant skill or learning doc.
 
 Violations in the pipeline process itself (wrong routing, missed gate, skipped step) should be logged as flags and added to the pipeline skill's lessons learned.
+
+---
+
+## How the Install Script Handles Conflicts
+
+The install script is **idempotent** — running it multiple times is safe.
+
+| Situation | Action |
+|-----------|--------|
+| File doesn't exist | Create it |
+| File exists, unmodified since last install | Update to new version |
+| File exists, modified by the user | Create a merge prompt at `.opencode/merge/<filename>.merge.md` |
+
+The merge prompt contains both the new version (upstream) and the current version (local), with instructions to resolve the conflict and delete the merge file when done.
+
+**`counters.json` is never overwritten** — your project's ticket/epic/ADR counter state is always preserved.
