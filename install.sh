@@ -51,7 +51,6 @@ for arg in "$@"; do
             echo ""
             echo "Environment variables:"
             echo "  ID_PREFIX  Prefix for ticket IDs (default: derived from directory name)"
-            echo "  BUILD_CMD  Build command for t1-check.sh (default: 'idf.py build')"
             exit 0
             ;;
         --non-interactive)
