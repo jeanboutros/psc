@@ -349,12 +349,12 @@ Fix in `.vscode/settings.json`:
 
 ```jsonc
 {
-    "idf.currentSetup": "/home/huyang/.espressif/v6.0.1/esp-idf-v6.0",
+    "idf.currentSetup": "$HOME/.espressif/<version>/esp-idf-<version>",
     "idf.customExtraVars": {
-        "IDF_PATH": "/home/huyang/.espressif/v6.0.1/esp-idf",
-        "IDF_TOOLS_PATH": "/home/huyang/.espressif",
-        "IDF_PYTHON_ENV_PATH": "/home/huyang/.espressif/tools/python/v6.0.1/venv",
-        "ESP_IDF_VERSION": "6.0.1"
+        "IDF_PATH": "$HOME/.espressif/<version>/esp-idf",
+        "IDF_TOOLS_PATH": "$HOME/.espressif",
+        "IDF_PYTHON_ENV_PATH": "$HOME/.espressif/tools/python/<version>/venv",
+        "ESP_IDF_VERSION": "<version>"
     }
 }
 ```

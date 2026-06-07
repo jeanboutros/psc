@@ -92,7 +92,7 @@ Every gate checks one or more compliance tiers. Each tier has an **independent r
 
 | # | Check | Criterion |
 |---|-------|-----------|
-| 1 | Build passes | `idf.py build` exits 0 |
+| 1 | Build passes | Project build command exits 0 |
 | 2 | No compiler warnings | `-Werror` is active; any warning is a failure |
 | 3 | Doxygen on all public API | Every public function/class/struct has `/** ... */` Doxygen |
 | 4 | No decision references in code | No `D-1:`, no "replaces the former..." |
@@ -289,7 +289,7 @@ OWASP_expansion: "<none | list of added compliance categories>"
 |--------|-------|------------|
 | Architecture design | Software Engineer | assumption-trap, compliance-gate, type-design-review |
 | Register model design | Hardware Engineer | assumption-trap, datasheet-verification, domain |
-| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, nrf24l01plus, ble-protocol |
+| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, domain |
 | Security analysis | Security Reviewer | assumption-trap, silent-failure, memory-safety |
 | Test strategy | Test Engineer | assumption-trap, test-driven-development |
 | Documentation plan | Docs Writer | assumption-trap, verification-before-completion |

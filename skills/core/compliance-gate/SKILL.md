@@ -1,6 +1,6 @@
 ---
 name: compliance-gate
-description: "Tiered compliance gate system for the ESP32 nRF24L01+ pipeline. Defines T1 (Mechanical), T2 (Architectural), T3 (Semantic), and T-ARCH (Architecture + Principles) checks. Every agent output passes through these gates. Includes OWASP compliance expansion and self-reflection on violations."
+description: "Tiered compliance gate system for the PSC pipeline. Defines T1 (Mechanical), T2 (Architectural), T3 (Semantic), and T-ARCH (Architecture + Principles) checks. Every agent output passes through these gates. Includes OWASP compliance expansion and self-reflection on violations."
 ---
 
 # Compliance Gate System
@@ -26,16 +26,15 @@ Checks that can be verified by automated tooling. No human judgement required.
 
 | # | Check | Method | Fail Condition |
 |---|-------|--------|----------------|
-| T1.1 | Build passes | `idf.py build` | Exit code ≠ 0 or any warning |
+| T1.1 | Build passes | Project build command | Exit code ≠ 0 or any warning |
 | T1.2 | Doxygen on public symbols | Grep every new/changed function, struct, enum, method for `/**` block with `@brief` | Missing `@brief` on any public symbol |
-| T1.3 | No decision references | Grep for `D-\d`, `F-\d`, `(decision` patterns in .cpp/.h | Any match |
-| T1.4 | No changelog-style comments | Grep for `replaces the`, `was previously`, `formerly`, `old`, `refactored from` in .cpp/.h | Any match |
-| T1.5 | No raw uint8_t where typed vocabulary exists | Every `uint8_t` parameter in public API must either have a typed overload or be `private`/`protected` | Public `uint8_t` with no typed alternative |
-| T1.6 | No magic numbers in @code examples | Grep for hex/decimal literals >1 in `@code` blocks within library headers | Raw literal where named constant/enum exists |
-| T1.7 | Constants in correct module | Grep for chip-level constants outside their library namespace (e.g. `NRF24_MAX_PAYLOAD` in main/) | Match in wrong module |
-| T1.8 | Reserved bits handled | Grep `to_byte()`/`from_byte()` implementations for reserved bit masking | Reserved bits not masked |
-| T1.9 | No hardcoded secrets | Grep for common secret patterns (password, api_key, secret, token, credential, Bearer) in .cpp/.h files | Any match that isn't a test fixture or explanatory comment |
-| T1.9 | No hardcoded secrets | Grep for common secret patterns (password, api_key, secret, token, credential, Bearer) in .cpp/.h files | Any match that isn't a test fixture or explanatory comment |
+| T1.3 | No decision references | Grep for `D-\d`, `F-\d`, `(decision` patterns in source files | Any match |
+| T1.4 | No changelog-style comments | Grep for `replaces the`, `was previously`, `formerly`, `old`, `refactored from` in source files | Any match |
+| T1.5 | No raw integers in public API where typed vocabulary exists | Every parameter in public API with a finite set of legal values must use a typed enum or struct | Public raw-type param with no typed alternative |
+| T1.6 | No magic numbers in doc examples | Grep for unexplained literals in doc/code examples within public headers | Raw literal where named constant/enum exists |
+| T1.7 | Constants in correct module | Grep for domain-level constants defined outside their module | Constant defined in the wrong module |
+| T1.8 | Reserved/padding fields handled | Check serialisation implementations for reserved bit/field masking | Reserved fields not masked or zeroed |
+| T1.9 | No hardcoded secrets | Grep for common secret patterns (password, api_key, secret, token, credential, Bearer) in source files | Any match that isn't a test fixture or explanatory comment |
 
 **Who runs T1:** Code Architect (automated checks); Supreme Leader orchestrates retry loops.
 
@@ -45,11 +44,11 @@ Checks that require design-level judgement about structure, boundaries, and API 
 
 | # | Check | Method | Fail Condition |
 |---|-------|--------|----------------|
-| T2.1 | Library/platform boundary | Grep for platform includes in library public headers | Any `#include <esp_*>` or `#include "freertos/"` in `components/nrf24l01plus/include/` |
-| T2.2 | Namespace structure | All public symbols in `nrf24::`, `nrf24::ble::`, `nrf24::diag::`, `nrf24::reg::` | Symbol in global namespace or wrong namespace |
-| T2.3 | File placement | Chip constants in library, task functions in separate .cpp, HAL impl in platform adapter | Constant in main/, function in wrong component |
-| T2.4 | API surface audit | Every public method parameter is maximally restrictive type | Public `uint8_t` where enum/struct vocabulary exists |
-| T2.5 | No mutable globals in library | Grep for file-scope mutable globals in library `src/` | Global mutable state found |
+| T2.1 | Module/platform boundary | Grep for platform-specific includes in shared library public headers | Platform headers leaking into portable/shared module |
+| T2.2 | Namespace/module structure | All public symbols in correct module namespace | Symbol in wrong namespace or module |
+| T2.3 | File placement | Domain constants in their module, task functions in separate files, platform adapters isolated | Constant or function in wrong module |
+| T2.4 | API surface audit | Every public method parameter is maximally restrictive type | Public raw-type param where typed vocabulary exists |
+| T2.5 | No mutable globals in library | Grep for file-scope mutable globals in shared modules | Global mutable state found |
 
 **Who runs T2:** Software Engineer spot-checks with delta review; Code Architect implements fixes.
 
@@ -237,13 +236,9 @@ After 3 loops at the same tier → **ESCALATE to user** with:
 
 ## Running the Checks
 
-### T1 Automated Check Script
+### T1 Automated Checks
 
-```bash
-bash docs/pipeline/scripts/t1-check.sh
-```
-
-This script runs T1.1–T1.8 against the codebase. Exit code 0 means all pass.
+T1 checks can be automated with grep/lint scripts appropriate for your project's language and build system. Run the project's build command and check exit code, then grep for the banned patterns listed in the T1 table above.
 
 ### Manual T2 and T-ARCH Checks
 
@@ -294,9 +289,9 @@ When a compliance violation is caught at any tier, the responsible agent MUST as
 
 | Violation type | Log location |
 |---------------|-------------|
-| nRF24 hardware-specific | `SKILL.md` nrf24l01plus skill |
+| Domain-specific hardware bugs | Relevant domain skill |
 | General compliance process | `SKILL.md` compliance-gate skill |
-| Learning about C++/ESP-IDF | `docs/learning/` |
+| Learning about tech stack | `docs/learning/` |
 | Pipeline process improvement | `docs/pipeline/pipeline.md` |
 
 ### Self-Reflection Format (added to violation reports)

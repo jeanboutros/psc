@@ -12,7 +12,6 @@
 #
 # Environment variables:
 #   ID_PREFIX    - Prefix for ticket IDs (default: derived from directory name)
-#   BUILD_CMD    - Build command for t1-check.sh (default: "idf.py build")
 #
 # The script is idempotent — running it multiple times is safe.
 # Modified files are preserved as merge prompts rather than overwritten.
@@ -89,7 +88,7 @@ TARGET_DIR="$(cd "$TARGET_DIR" 2>/dev/null && pwd)" || {
 
 # Derive a short project prefix from the directory name
 PROJECT_NAME="$(basename "$TARGET_DIR" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]//g')"
-ID_PREFIX="${ID_PREFIX:-${PROJECT_NAME:-owf}}"
+ID_PREFIX="${ID_PREFIX:-${PROJECT_NAME:-psc}}"
 
 AGENTS_DIR="$TARGET_DIR/.opencode/agents"
 CORE_SKILLS_DIR="$TARGET_DIR/.opencode/skills"
@@ -243,6 +242,8 @@ DOMAIN_SKILLS=(
     "ble-protocol:BLE protocol — advertising channels, PDU types, data whitening, bit order, CRC-24"
     "ubertooth:Ubertooth One — BLE testing tool, packet injection, passive sniffing, cross-validation"
     "nrf52840-sniffer:nRF52840 Dongle — BLE sniffer, Wireshark extcap, cross-validation with ESP32"
+    # Add your own domain skills here, e.g.:
+    # "my-domain:My domain — description of when to load this skill"
 )
 
 SELECTED_DOMAIN_SKILLS=()
@@ -378,7 +379,7 @@ install_scripts() {
 
         # Update the prefix in next-id.mjs to use the project prefix
         if [ -f "$PM_DIR/next-id.mjs" ]; then
-            sed -i "s/const ID_PREFIX = process.env.ID_PREFIX || \"owf\";/const ID_PREFIX = process.env.ID_PREFIX || \"$ID_PREFIX\";/" "$PM_DIR/next-id.mjs" 2>/dev/null || true
+            sed -i "s/const ID_PREFIX = process.env.ID_PREFIX || \"psc\";/const ID_PREFIX = process.env.ID_PREFIX || \"$ID_PREFIX\";/" "$PM_DIR/next-id.mjs" 2>/dev/null || true
         fi
     else
         info "counters.json already exists — keeping existing version (not overwritten)"

@@ -7,7 +7,7 @@ description: "Error path hunting patterns for embedded systems. Triggered when r
 
 ## Purpose
 
-In embedded systems, silent failures are catastrophic. A swallowed exception, an unchecked return value, or an error that degrades functionality without reporting can leave the system in an undefined state with no indication of what went wrong. This skill defines systematic patterns for detecting and preventing silent failures in the ESP32 nRF24L01+ project.
+In embedded systems, silent failures are catastrophic. A swallowed exception, an unchecked return value, or an error that degrades functionality without reporting can leave the system in an undefined state with no indication of what went wrong. This skill defines systematic patterns for detecting and preventing silent failures.
 
 ## When to Trigger
 

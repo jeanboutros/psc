@@ -25,30 +25,23 @@ Before writing any code, break the task into units:
 
 | # | Unit | Files | Validation |
 |---|------|-------|-----------|
-| 1 | [name] | [files] | `idf.py build` passes |
-| 2 | [name] | [files] | `idf.py build` passes |
-| 3 | [name] | [files] | `idf.py build` + static_assert |
+| 1 | [name] | [files] | build passes |
+| 2 | [name] | [files] | build passes |
+| 3 | [name] | [files] | build passes + tests pass |
 ```
 
 ### Step 2: Execute Unit-by-Unit
 
 For each unit:
 1. Implement the unit (and ONLY that unit)
-2. Run: `source ~/.espressif/tools/activate_idf_v6.0.1.sh && idf.py build`
+2. Run the project build/test command
 3. Confirm: exit 0, zero warnings
 4. Report: "Unit N/M complete. Build passes."
 5. Proceed to next unit
 
 ### Step 3: Final Validation
 
-After all units:
-```bash
-source ~/.espressif/tools/activate_idf_v6.0.1.sh && idf.py build
-```
-Must exit 0. If hardware connected:
-```bash
-idf.py -p /dev/ttyUSB0 flash monitor
-```
+After all units, run the full build and test suite. Must exit 0.
 
 ## Rules
 

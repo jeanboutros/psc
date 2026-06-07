@@ -1,9 +1,9 @@
 ---
 name: test-driven-development
-description: "TDD loop adapted for embedded C++: write static_assert or compile-time test first, verify it catches the expected behaviour, then implement. Red-green-refactor for register structs and protocol logic."
+description: "TDD loop: write test first, verify it catches the expected behaviour, then implement. Red-green-refactor for any language or framework. Load tdd-cpp alongside this skill when working in C++."
 ---
 
-# Test-Driven Development — Embedded C++
+# Test-Driven Development
 
 ## Overview
 
@@ -13,8 +13,8 @@ Core principle: **If you didn't watch the test fail, you don't know if it tests 
 
 ## When to Use
 
-- New register struct implementation
-- New protocol function (whitening, channel mapping)
+- New function, module, or component implementation
+- New protocol or transformation logic
 - Bug fixes (write the test that would have caught it)
 - Refactoring (tests prove no regression)
 
@@ -28,68 +28,79 @@ RED ──→ GREEN ──→ REFACTOR
 
 ### RED: Write the Failing Test
 
-```cpp
-// test_registers.cpp — write this FIRST
-#include "nrf24l01plus/registers/rf_setup.h"
+Write a test for the behaviour you're about to implement — before writing any implementation code. Run it. It must fail.
 
-// Test: RfSetup encodes 1Mbps correctly
-static_assert(nrf24::RfSetup{.data_rate = nrf24::DataRate::Mbps1}.to_byte() == 0x06);
-
-// Test: Round-trip preserves all fields
-static_assert(nrf24::RfSetup::from_byte(0x26).data_rate == nrf24::DataRate::Kbps250);
-```
-
-Build → should fail (struct doesn't exist yet or encoding is wrong).
+If the test passes before you write the implementation, the test is wrong.
 
 ### GREEN: Implement Minimal Code
 
-Write just enough code to make the test pass:
-- Implement the struct with correct bit positions
-- Implement `to_byte()` and `from_byte()`
-- Build → all static_asserts pass
+Write just enough code to make the test pass. No more. Resist the urge to generalise prematurely.
 
 ### REFACTOR: Clean Up
 
-- Add Doxygen documentation
-- Ensure naming matches datasheet
-- Add edge case tests (0xFF, 0x00, reserved bits)
+- Remove duplication
+- Improve naming
+- Add documentation
+- Add edge case tests (boundary values, error paths)
 
-## Test Categories for This Project
+The tests must still pass after refactoring.
 
-### 1. Register Round-Trip Tests
-```cpp
-// Every register struct needs these:
-static_assert(T::from_byte(T{...}.to_byte()) == expected);
-static_assert(T::from_byte(RESET_VALUE).field == expected_default);
+## Test Categories
+
+### 1. Happy Path Tests
+
+Verify the function does what it should for valid inputs:
+
+```
+assert compute(known_input) == expected_output
 ```
 
-### 2. Encoding Tests
-```cpp
-// Verify specific encodings match datasheet
-static_assert(nrf24::RfSetup{.data_rate = nrf24::DataRate::Mbps2}.to_byte() & 0x08);
+### 2. Round-Trip / Encode-Decode Tests
+
+For any serialise/deserialise or encode/decode pair:
+
+```
+assert decode(encode(value)) == value
+assert encode(decode(bytes)) == bytes
 ```
 
 ### 3. Edge Case Tests
-```cpp
-// 0xFF input — reserved bits must be masked
-static_assert(nrf24::RfCh::from_byte(0xFF).channel == 127); // bit 7 is reserved
 
-// 0x00 input — all fields at minimum
-static_assert(nrf24::Config::from_byte(0x00).power_mode == nrf24::PowerMode::Down);
+```
+assert f(MAX_VALUE)   == expected
+assert f(MIN_VALUE)   == expected
+assert f(ZERO)        == expected
+assert f(EMPTY)       == expected
 ```
 
-### 4. Protocol Logic Tests
-```cpp
-// Channel mapping
-static_assert(nrf24::ble::channel_to_rf_ch(37) == 2);
-static_assert(nrf24::ble::channel_to_rf_ch(0) == 4);
-static_assert(nrf24::ble::channel_to_rf_ch(39) == 80);
+### 4. Error Path Tests
+
+```
+assert f(invalid_input) raises Error
+assert f(null_input)    returns default_or_error
+```
+
+### 5. Regression Tests
+
+After every bug fix, write a test that would have caught it:
+
+```
+# This test documents the bug and proves it is fixed
+assert f(previously_broken_input) == correct_output
 ```
 
 ## Rules
 
 1. **Test file must exist before implementation** — even if empty
-2. **Build must fail before implementation** — proves the test is real
-3. **Build must pass after implementation** — proves correctness
+2. **The test must fail before implementation** — proves the test is real
+3. **The test must pass after implementation** — proves correctness
 4. **Never delete a test to make code pass** — fix the code instead
-5. **Edge cases are not optional** — 0xFF and reserved bits always tested
+5. **Edge cases are not optional** — boundary values and error paths always tested
+6. **One failing test at a time** — don't write multiple failing tests before implementing
+
+## Self-Reflection Clause
+
+After a bug that tests didn't catch:
+1. **Why didn't a test catch this?** — Missing coverage, wrong assertion, or wrong test?
+2. **Write the test now** — Add it to prevent regression.
+3. **Update the knowledge base** — Add the pattern to `docs/learning/` if it's a recurring gap.

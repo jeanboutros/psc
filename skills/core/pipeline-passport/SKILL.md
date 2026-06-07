@@ -51,9 +51,9 @@ Every step the pipeline requires for this task. Steps are checked off sequential
 ### Phase B — Build (PAU Loop)
 
 - [ ] B1: PLAN — identify files, acceptance criteria, logical units
-- [ ] B2-1: APPLY (unit 1) — implement, run `idf.py build`
+- [ ] B2-1: APPLY (unit 1) — implement, run build
 - [ ] B2a-1: B-UNIT-GATE — T1 ✅/❌ | T-ARCH ✅/❌ | Verdict: _______
-- [ ] B2-N: APPLY (unit N) — implement, run `idf.py build`
+- [ ] B2-N: APPLY (unit N) — implement, run build
 - [ ] B2a-N: B-UNIT-GATE — T1 ✅/❌ | T-ARCH ✅/❌ | Verdict: _______
 - [ ] B3: VALIDATE — full build, optional flash
 - [ ] B3a: B-FINAL-GATE — T1 ✅/❌ | T2 ✅/❌ | T-ARCH ✅/❌ | Verdict: _______

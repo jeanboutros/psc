@@ -61,9 +61,8 @@ For multi-bit fields with specific encodings:
 
 ## Key Datasheets for This Project
 
-- **nRF24L01+ Product Specification v1.0** — All register definitions
-- **Bluetooth Core Spec Vol 6 Part B** — BLE physical layer, channel mapping
-- **ESP32 Technical Reference Manual** — SPI peripheral, GPIO
+List your project-specific datasheets here (e.g. chip reference manuals, protocol specs).
+Remove this section if your project has no hardware datasheets.
 
 ## Anti-Patterns
 
@@ -79,4 +78,4 @@ For multi-bit fields with specific encodings:
 After fixing any bug or resolving any issue that required debugging, you MUST ask:
 1. **Why was this bug missed?** — What review, test, or protocol gap allowed it through?
 2. **What procedural safeguard would have caught it?** — What specific check, test, or verification step would have prevented it?
-3. **Update the knowledge base** — Add the lesson to the relevant skill (`/home/huyang/projects/esp32/.opencode/skills/nrf24l01plus/SKILL.md` for nRF24 hardware bugs, or the appropriate learning doc in `docs/learning/`) so the same class of bug is caught earlier next time.
+3. **Update the knowledge base** — Add the lesson to the relevant skill or learning doc in `docs/learning/` so the same class of bug is caught earlier next time.

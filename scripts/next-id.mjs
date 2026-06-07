@@ -3,9 +3,6 @@
 /**
  * Generate the next ticket, epic, clarification, ADR, advisory, design, or chore number(s).
  *
- * Adapted from the OAC (international-space-bar) project management system
- * for the ESP32 nRF24L01+ embedded C++ project.
- *
  * Usage:
  *   node next-id.mjs ticket              # next ticket id
  *   node next-id.mjs ticket 5            # next 5 ticket ids
@@ -19,7 +16,7 @@
  *   node next-id.mjs ticket --dry-run    # preview without updating counters
  *
  * Output (JSON, one object per run — easy for LLMs to parse):
- *   { "kind": "ticket", "ids": ["nrf-0016"], "dryRun": false }
+ *   { "kind": "ticket", "ids": ["proj-0016"], "dryRun": false }
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -29,8 +26,8 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Counters file location: next to this script by default, or COUNTERS_PATH env var.
-// Prefix can be configured via ID_PREFIX env var (default: "owf" = opencode-workflow).
-const ID_PREFIX = process.env.ID_PREFIX || "owf";
+// Prefix can be configured via ID_PREFIX env var (default: "psc").
+const ID_PREFIX = process.env.ID_PREFIX || "psc";
 const COUNTERS_PATH = process.env.COUNTERS_PATH || resolve(__dirname, "counters.json");
 
 const KIND_CONFIG = {

@@ -1,6 +1,6 @@
 ---
 name: pipeline
-description: "The agent-facing state machine for the ESP32 nRF24L01+ validation pipeline. Defines phases, gates, state transitions, agent routing, dispatch envelope format, and skill loading rules. All agents must follow this state machine."
+description: "The agent-facing state machine for the PSC validation pipeline. Defines phases, gates, state transitions, agent routing, dispatch envelope format, and skill loading rules. All agents must follow this state machine."
 ---
 
 # Pipeline State Machine
@@ -43,7 +43,7 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
 | B1 | PLAN | Read task, identify files, list acceptance criteria, declare logical units | Code Architect |
-| B2 | APPLY (per unit) | Implement one logical unit, run `idf.py build` | Code Architect |
+| B2 | APPLY (per unit) | Implement one logical unit, run build | Code Architect |
 | B2a | B-UNIT-GATE | T1 + T-ARCH compliance check after each unit | Code Architect (T1), SW Engineer (T-ARCH) |
 | B3 | VALIDATE | Full build, optional flash | Code Architect |
 | B3a | B-FINAL-GATE | T1 + T2 + T-ARCH compliance check after all units | Code Architect (T1), SW Engineer (T2 + T-ARCH) |
@@ -229,12 +229,12 @@ Which agent handles which intent:
 | Intent | Agent | Skills to Load |
 |--------|-------|---------------|
 | Architecture design | Software Engineer | assumption-trap, compliance-gate, type-design-review |
-| Register model design | Hardware Engineer | assumption-trap, datasheet-verification, nrf24l01plus |
-| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, nrf24l01plus, ble-protocol |
+| Register model design | Hardware Engineer | assumption-trap, datasheet-verification, domain |
+| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, domain |
 | Security analysis | Security Reviewer | assumption-trap, silent-failure, memory-safety |
-| Test strategy | Test Engineer | assumption-trap, test-driven-development |
+| Test strategy | Test Engineer | assumption-trap, test-driven-development, tdd-cpp (C++ projects) |
 | Documentation plan | Docs Writer | assumption-trap, verification-before-completion |
-| Implementation | Code Architect | pau-loop, incremental-execution, nrf24l01plus, compliance-gate |
+| Implementation | Code Architect | pau-loop, incremental-execution, compliance-gate |
 | T1 compliance check | Code Architect | compliance-gate, verification-before-completion |
 | T2 architectural review | Software Engineer | compliance-gate, type-design-review |
 | T3 semantic review | All 6 specialists | compliance-gate, domain-specific skills |
@@ -243,7 +243,7 @@ Which agent handles which intent:
 | Gate orchestration | Supreme Leader | pipeline, compliance-gate, flag-protocol |
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
-| Debugging | Code Architect | systematic-debugging, nrf24l01plus |
+| Debugging | Code Architect | systematic-debugging, domain |
 
 ---
 
@@ -286,16 +286,16 @@ Used in **Phase A** (architecture) and **Phase C** (verification).
 
 Before starting any task, read `AGENTS.md` for:
 - **Multi-Agent Validation Pipeline** (Mandatory) — the 3-phase pipeline summary
-- **Key Rules** — no-assumption, PAU loop, datasheet truth, quality gate, incremental execution, flag protocol, compliance gates
-- **Code Documentation Rules** — Doxygen format requirements
-- **Hardware Register Library Design Principles** — typed enums, HAL abstract class, namespace structure
-- **nRF24L01+ Chip-Specific Traps** — critical hardware bugs
+- **Key Rules** — no-assumption, PAU loop, quality gate, incremental execution, flag protocol, compliance gates
+- **Documentation Rules** — doc format requirements for the project
+- **Design Principles** — typed vocabulary, module boundaries, structural rules
+- **Domain-Specific Traps** — critical known pitfalls for the project's tech stack
 - **Knowledge Management Rules** — learning doc creation requirements
 
 ### Skill Loading Rules
 
 1. **Always loaded (core skills):** assumption-trap, compliance-gate, pipeline, pau-loop, verification-before-completion, self-audit-checklist, review-confidence, type-design-review, silent-failure
-2. **Domain skills (load based on task):** nrf24l01plus, datasheet-verification, memory-safety, ubertooth, nrf52840-sniffer, systematic-debugging, test-driven-development
+2. **Domain skills (load based on task):** any domain skills listed in AGENTS.md for the project's tech stack; datasheet-verification, memory-safety, systematic-debugging, test-driven-development as needed
 3. **Phase skills (load based on phase):** brainstorming (Phase A), incremental-execution (Phase B), grill-me (Phase A or C dual-model challenge)
 4. **Compliance expansion (load based on OWASP triggers):** Review task for new concern categories and load additional compliance checks as needed
 

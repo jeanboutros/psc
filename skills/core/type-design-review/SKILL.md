@@ -7,7 +7,7 @@ description: "4-dimension type quality scoring for APIs, register structs, enum 
 
 ## Purpose
 
-This skill defines a systematic 4-dimension scoring system for evaluating the quality of type designs in the nRF24L01+ library. It enforces the project's core principle: **the public API must give users a vocabulary, not raw bytes.**
+This skill defines a systematic 4-dimension scoring system for evaluating the quality of type designs in your project's API. It enforces the project's core principle: **the public API must give users a vocabulary, not raw bytes.**
 
 ## When to Trigger
 
@@ -77,7 +77,7 @@ uint8_t rf_setup_raw;  // just a raw byte, no type safety at all
 | 10 | **All** invalid values are rejected at compile time. The type system makes it impossible to represent an illegal state. `enum class` with no raw escape hatch. Struct fields use typed enums with exhaustive `switch`. |
 | 7-9 | Most invalid values are rejected at compile time. Enum classes for finite-valued fields. A few edge cases need runtime checks (e.g. reserved bit patterns). |
 | 5-6 | Many invalid values require runtime checks. Some fields are `enum class` but others are `uint8_t` with named constants. A `from_byte()` that accepts any byte. |
-| 3-4 | Most fields are `uint8_t` with named `constexpr` constants. Invalid values are only caught at runtime. Users can pass `0xFF` where `nrf24::reg::CONFIG` is expected because the type is `uint8_t`. |
+| 3-4 | Most fields are raw integers with named `constexpr` constants. Invalid values are only caught at runtime. Users can pass any raw value where a typed parameter is expected because the type is not enforced. |
 | 1-2 | Everything is raw `uint8_t` or `int`. No type enforcement at all. |
 
 **How to improve:**
@@ -121,7 +121,7 @@ void write_reg(uint8_t addr, uint8_t val);  // anything goes, no typing at all
 
 | Score | Description |
 |-------|-------------|
-| 10 | The API reads like documentation. `radio.write_reg(nrf24::Config{.en_crc = true, .pwr_up = true})` is immediately clear. Named constants are used everywhere. `@code` examples use the library's own vocabulary. A newcomer can write correct code without reading external docs. |
+| 10 | The API reads like documentation. `radio.set_rate(DataRate::Mbps1)` is immediately clear. Named typed constants are used everywhere. Doc examples use the library's own vocabulary. A newcomer can write correct code without reading external docs. |
 | 7-9 | The API is mostly self-documenting. Most operations use named types and enumerators. A few operations still require looking up the meaning of parameters. |
 | 5-6 | The API is partially self-documenting. Some operations use typed enums, others use raw integers with named constants. A newcomer needs to read docs for roughly half the API. |
 | 3-4 | The API is mostly opaque. Named constants exist but are `constexpr uint8_t` values, not type-safe. A newcomer must read the datasheet to understand most operations. |
@@ -135,20 +135,18 @@ void write_reg(uint8_t addr, uint8_t val);  // anything goes, no typing at all
 - Learning docs must use the typed API with a note for educational raw examples.
 
 **Example — 10/10:**
-```cpp
-nrf24::Config cfg;
-cfg.en_crc = true;
-cfg.pwr_up = true;
+```
+// Example — 10/10 (self-documenting typed API):
+Config cfg;
+cfg.enable_crc = true;
+cfg.power_up = true;
 radio.write_reg(cfg);  // Self-documenting. No datasheet lookup needed.
-
-// @code example in Doxygen:
-// radio.write_reg(nrf24::Config{.en_crc = true, .pwr_up = true});
 ```
 
 **Example — 5/10:**
-```cpp
-radio.write_reg(nrf24::reg::CONFIG, nrf24::Config{.en_crc = true}.to_byte());
-// Readable but requires knowing nrf24::reg::CONFIG is 0x00
+```
+// Readable but requires knowing the register address:
+radio.write_reg(reg::CONFIG, Config{.en_crc = true}.to_byte());
 // Better than raw values, but the typed overload (write_reg(Config{}))
 // would be even clearer.
 ```
@@ -172,7 +170,7 @@ radio.write_reg(0x00, 0x03);  // What does this do? Need datasheet.
 
 **How to improve:**
 - Move all raw `uint8_t` overloads to `private` or `protected` sections.
-- Provide typed struct overloads that deduce the register address from the struct type: `write_reg(Config{})` instead of `write_reg(nrf24::reg::CONFIG, val)`.
+- Provide typed struct overloads that deduce the register/command from the struct type: `write_reg(Config{})` instead of `write_reg(reg::CONFIG, val)`.
 - If both raw and typed overloads exist, the raw overload MUST be private. The presence of a typed overload does not excuse making the raw overload public.
 - Add `static_assert` tests that verify round-trip properties: `static_assert(Config{}.to_byte() == 0x08, "default config");`
 - In code reviews: grep for `public.*uint8_t` in headers. Every match must have a typed alternative or be made private.
@@ -292,7 +290,7 @@ This project has a hard requirement: **the public API must use typed enums and s
 1. Every register field with finite legal values **must be an `enum class`**.
 2. Every method parameter accepting a finite set of values **must use a typed enum or struct with ADDRESS constant**.
 3. Convenience `uint8_t` overloads **must be `private` or `protected`** — never `public`.
-4. Named `constexpr uint8_t` constants (e.g. `nrf24::reg::CONFIG`) are **documentation aids, NOT type safety**. If a `uint8_t` parameter accepts these constants, it also accepts `0xFF`.
+4. Named raw-typed constants (e.g. `constexpr uint8_t reg::CONFIG`) are **documentation aids, NOT type safety**. If a raw-typed parameter accepts these constants, it also accepts any invalid value.
 5. The typed API must be the **ONLY public API**.
 
 ### What This Means in Practice

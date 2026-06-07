@@ -1,4 +1,4 @@
-# PSC — Politburo Standing Committee
+# PSC - Politburo Standing Committee
 
 > *The speed of a standing committee. The discipline of a politburo. Ship code that works.*
 
@@ -6,7 +6,7 @@
 
 China built 40,000 km of high-speed rail in 15 years. The UK spent 20 years *planning* HS2 and hasn't laid a single mile of track. Shanghai's Metro grew from 0 to 800 km in under three decades; London's Crossrail took 13 years for a single line.
 
-The difference isn't resources, it's execution discipline`. The Politburo Standing Committee (PSC) makes decisions fast, assigns clear ownership, enforces quality without scope creep, and moves on. No endless review cycles. No democracy-of-one-thousand-opinions. Design, validate, build, verify, commit.
+The difference isn't resources, it's execution discipline. The Politburo Standing Committee (PSC) makes decisions fast, assigns clear ownership, enforces quality without scope creep, and moves on. No endless review cycles. No democracy-of-one-thousand-opinions. Design, validate, build, verify, commit.
 
 PSC brings that execution philosophy to multi-agent AI development:
 
@@ -101,7 +101,6 @@ your-project/
   docs/
     pipeline/
       scripts/
-        t1-check.sh           # T1 mechanical compliance check
     project-management/
       next-id.mjs              # Ticket/epic/ADR ID generator
       counters.json            # ID counters
@@ -152,8 +151,9 @@ Skills are the domain knowledge layer — agents are generic roles, and all proj
 | Category | Skills | Always Installed? |
 |----------|--------|-------------------|
 | **Core** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
-| **Process** | brainstorming, grill-me, datasheet-verification, systematic-debugging, test-driven-development, verification-before-completion, memory-safety, type-design-review, silent-failure | Yes |
-| **Domain** | nrf24l01plus, esp-idf, cpp-embedded, ble-protocol, ubertooth, nrf52840-sniffer | Optional |
+| **Process** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
+| **Testing** | test-driven-development (generic), tdd-cpp (C++ projects), datasheet-verification, systematic-debugging, verification-before-completion, memory-safety, type-design-review, silent-failure | Yes |
+| **Domain** | *(your project-specific skills — see "How to Add Your Own Domain Skills" below)* | Optional |
 
 ## Project Management
 
