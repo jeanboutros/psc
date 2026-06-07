@@ -134,6 +134,9 @@ For the complete pipeline specification, agent routing, dispatch envelope format
 | `code-architect` | Primary implementation agent (PAU loop, incremental build) | subagent |
 | `memory-safety` | C++ memory safety, RAII, heap analysis, ASAN | subagent |
 | `pm` | Task master — sole authority for creating tasks and tickets | subagent |
+| `product-designer` | Vision extraction, requirements discovery — helps users articulate what they want | subagent (optional) |
+| `ux-engineer` | Usability, state completeness, accessibility, interaction design | subagent (optional) |
+| `ui-engineer` | Frontend implementation — builds production-grade UI using specified stack | subagent (optional) |
 
 ## Skills
 
@@ -153,13 +156,14 @@ Skills are the domain knowledge layer — agents are generic roles, and all proj
 | **Core** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
 | **Process** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
 | **Testing** | test-driven-development (generic), tdd-cpp (C++ projects), datasheet-verification, systematic-debugging, verification-before-completion, memory-safety, type-design-review, silent-failure | Yes |
+| **UI/Design** | design-taste, ux-patterns | Optional (for projects with UI) |
 | **Domain** | *(your project-specific skills — see "How to Add Your Own Domain Skills" below)* | Optional |
 
 ## Project Management
 
 ### Ticket IDs
 
-```bash
+```bas likeh
 node docs/project-management/next-id.mjs ticket         # next ticket id
 node docs/project-management/next-id.mjs ticket 5       # next 5 ticket ids
 node docs/project-management/next-id.mjs epic            # next epic id
@@ -262,6 +266,84 @@ Every agent and skill includes a self-reflection clause. After fixing any bug or
 3. **Update the knowledge base** — Add the lesson to the relevant skill or learning doc.
 
 Every failure becomes a permanent improvement to the workflow.
+
+## Review & Test Status
+
+Human review and testing status for every file in this project.
+
+### Agents
+
+| File | Reviewed | Tested |
+|------|----------|--------|
+| `agents/code-architect.md` | [ ] | [ ] |
+| `agents/docs-writer.md` | [ ] | [ ] |
+| `agents/hardware-engineer.md` | [ ] | [ ] |
+| `agents/memory-safety.md` | [ ] | [ ] |
+| `agents/pm.md` | [ ] | [ ] |
+| `agents/product-designer.md` | [ ] | [ ] |
+| `agents/security-reviewer.md` | [ ] | [ ] |
+| `agents/software-engineer.md` | [ ] | [ ] |
+| `agents/supreme-leader.md` | [ ] | [ ] |
+| `agents/test-engineer.md` | [ ] | [ ] |
+| `agents/ui-engineer.md` | [ ] | [ ] |
+| `agents/ux-engineer.md` | [ ] | [ ] |
+| `agents/wireless-expert.md` | [ ] | [ ] |
+
+### Core Skills
+
+| File | Reviewed | Tested |
+|------|----------|--------|
+| `skills/core/assumption-trap/SKILL.md` | [ ] | [ ] |
+| `skills/core/brainstorming/SKILL.md` | [ ] | [ ] |
+| `skills/core/compliance-gate/SKILL.md` | [ ] | [ ] |
+| `skills/core/context7-docs/SKILL.md` | [ ] | [ ] |
+| `skills/core/datasheet-verification/SKILL.md` | [ ] | [ ] |
+| `skills/core/flag-protocol/SKILL.md` | [ ] | [ ] |
+| `skills/core/grill-me/SKILL.md` | [ ] | [ ] |
+| `skills/core/incremental-execution/SKILL.md` | [ ] | [ ] |
+| `skills/core/memory-safety/SKILL.md` | [ ] | [ ] |
+| `skills/core/pau-loop/SKILL.md` | [ ] | [ ] |
+| `skills/core/pipeline/SKILL.md` | [ ] | [ ] |
+| `skills/core/pipeline-passport/SKILL.md` | [ ] | [ ] |
+| `skills/core/post-rejection-correction/SKILL.md` | [ ] | [ ] |
+| `skills/core/review-confidence/SKILL.md` | [ ] | [ ] |
+| `skills/core/self-audit-checklist/SKILL.md` | [ ] | [ ] |
+| `skills/core/silent-failure/SKILL.md` | [ ] | [ ] |
+| `skills/core/systematic-debugging/SKILL.md` | [ ] | [ ] |
+| `skills/core/tdd-cpp/SKILL.md` | [ ] | [ ] |
+| `skills/core/test-driven-development/SKILL.md` | [ ] | [ ] |
+| `skills/core/type-design-review/SKILL.md` | [ ] | [ ] |
+| `skills/core/verification-before-completion/SKILL.md` | [ ] | [ ] |
+
+### Domain Skills
+
+| File | Reviewed | Tested |
+|------|----------|--------|
+| `skills/domain/ble-protocol/SKILL.md` | [ ] | [ ] |
+| `skills/domain/cpp-embedded/SKILL.md` | [ ] | [ ] |
+| `skills/domain/design-taste/SKILL.md` | [ ] | [ ] |
+| `skills/domain/esp-idf/SKILL.md` | [ ] | [ ] |
+| `skills/domain/nrf24l01plus/SKILL.md` | [ ] | [ ] |
+| `skills/domain/nrf52840-sniffer/SKILL.md` | [ ] | [ ] |
+| `skills/domain/ubertooth/SKILL.md` | [ ] | [ ] |
+| `skills/domain/ux-patterns/SKILL.md` | [ ] | [ ] |
+
+### Scripts
+
+| File | Reviewed | Tested |
+|------|----------|--------|
+| `scripts/next-id.mjs` | [x] | [ ] |
+| `scripts/counters.json` | [ ] | [ ] |
+
+### Docs
+
+| File | Reviewed | Tested |
+|------|----------|--------|
+| `docs/pipeline.md` | [ ] | [ ] |
+| `README.md` | [ ] | [ ] |
+| `AGENTS.md` | [ ] | [ ] |
+| `LICENSE` | [ ] | [ ] |
+| `install.sh` | [ ] | [ ] |
 
 ## License
 
