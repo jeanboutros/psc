@@ -112,6 +112,14 @@ Tracks all pipeline loops (A→B→A→B, B-unit retries, gate failures).
 | Loop | From Step | To Step | Reason | Timestamp |
 |------|-----------|---------|--------|-----------|
 | _______ | _______ | _______ | _______ | _______ |
+
+## Correction Records
+
+Produced by the `post-rejection-correction` skill. One record per retry. Required for every gate failure before the retry is dispatched. Permanent — must not be edited after stamping.
+
+| Retry | Gate | Tier | RC Category | Root cause (why missed) | Corrective action | Codified where |
+|-------|------|------|-------------|------------------------|-------------------|----------------|
+| _______ | _______ | _______ | _______ | _______ | _______ | _______ |
 ```
 
 ---

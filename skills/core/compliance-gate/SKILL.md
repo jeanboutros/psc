@@ -215,6 +215,20 @@ Each compliance tier has an **independent** 3-retry budget at each gate.
 | T3 | Relevant specialist(s) | Fix semantic violations |
 | T-ARCH | Software Engineer (code) or Supreme Leader (routing) | Fix logical/structural issues |
 
+### Correction Analysis — Before Every Retry
+
+Before any retry is dispatched, the **producing agent** MUST load the `post-rejection-correction` skill and produce a **Correction Record**:
+
+1. Read the rejection findings from the Gate Violation Report.
+2. Classify each finding into a root-cause category (RC-1 through RC-5).
+3. Take the corrective action for each category (update a skill, add a question, add a checklist row).
+4. Produce a Correction Record and append it to the passport's `## Correction Records` section.
+5. If RC-4 (missing skill): Supreme Leader updates `skills_loaded` in the retry dispatch envelope before sending.
+
+**No retry dispatch may proceed without a Correction Record stamped in the passport.**
+
+See `post-rejection-correction` skill for the full root-cause taxonomy, the five RC categories, and the Correction Record format.
+
 ### Escalation
 
 After 3 loops at the same tier → **ESCALATE to user** with:

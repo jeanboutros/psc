@@ -32,7 +32,9 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 | A3 | A-GATE | T3 + T-ARCH compliance check | All 6 specialists (T3), SW Engineer (T-ARCH) |
 
 **A-GATE pass criteria:** All 6 specialists issue APPROVED or CONDITIONAL PASS + T-ARCH passes.
-**A-GATE fail:** Any REJECTED → loop back to A1 with specific critique (max 3 loops at T3).
+**A-GATE fail:** Any REJECTED → producing agent runs `post-rejection-correction` protocol first, then loop back to A1 with specific critique (max 3 loops at T3).
+
+**User-prompted-twice signal:** If the user provides clarification or requirements during Phase A that the agent should have asked for, this is a Phase A quality failure. The agent did not apply `assumption-trap` correctly or asked an insufficient range of questions. Treat it the same as a gate rejection: run the `post-rejection-correction` protocol (maps to RC-2: Missing Question Category) before continuing. The user should never need to volunteer requirements — the agent must ask.
 
 ### Phase B — Build (PAU Loop)
 
@@ -173,6 +175,8 @@ This skill defines the complete pipeline workflow that all agents must follow. I
 | C3 | C-GATE fails | C0 or C2 or B2 | T1 fail → C0 (Code Architect fixes, re-run T1); T3 fail → C2 (specialist re-review); T-ARCH fail → Software Engineer (architectural fix) |
 | Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents full violation report to user |
 
+> **All FAIL transitions require a Correction Record before retry.** For every row above where the event is a gate or check failure, the producing agent MUST complete the `post-rejection-correction` protocol and stamp a Correction Record in the passport before the Supreme Leader dispatches the retry. The Supreme Leader must verify the Correction Record is present; if it is missing, block the dispatch and route to the producing agent first.
+
 ---
 
 ## Dispatch Envelope Format
@@ -192,6 +196,8 @@ skills_loaded:
   - "pipeline"
   - "pau-loop"
   - "<domain-specific-skills>"
+  # On retry dispatches, also load:
+  # - "post-rejection-correction"  ← required when retry_count > 0 on any tier
 expected_outcomes:
   - "<specific deliverable 1>"
   - "<specific deliverable 2>"
@@ -244,6 +250,9 @@ Which agent handles which intent:
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
 | Debugging | Code Architect | systematic-debugging, domain |
+| Product vision / requirements discovery | Product Designer | assumption-trap, design-taste, ux-patterns |
+| Interaction design / UX review | UX Engineer | assumption-trap, ux-patterns, design-taste |
+| UI implementation | UI Engineer | pau-loop, incremental-execution, design-taste, ux-patterns |
 
 ---
 
