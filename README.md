@@ -6,7 +6,7 @@
 
 China built 40,000 km of high-speed rail in 15 years. The UK spent 20 years *planning* HS2 and hasn't laid a single mile of track. Shanghai's Metro grew from 0 to 800 km in under three decades; London's Crossrail took 13 years for a single line.
 
-The difference isn't resources — it's execution discipline. The Politburo Standing Committee (PSC) makes decisions fast, assigns clear ownership, enforces quality without scope creep, and moves on. No endless review cycles. No democracy-of-one-thousand-opinions. Design, validate, build, verify, commit.
+The difference isn't resources, it's execution discipline`. The Politburo Standing Committee (PSC) makes decisions fast, assigns clear ownership, enforces quality without scope creep, and moves on. No endless review cycles. No democracy-of-one-thousand-opinions. Design, validate, build, verify, commit.
 
 PSC brings that execution philosophy to multi-agent AI development:
 
@@ -14,7 +14,7 @@ PSC brings that execution philosophy to multi-agent AI development:
 - **Quality gates, not review theaters** — mechanical checks pass or fail; no subjective "looks good to me"
 - **Dual-Model Challenge** — adversarial review by a second model, not rubber stamps
 - **Three-phase pipeline** — Design → Build → Verify, with no skipping phases
-- **Tiered compliance** — T1 (mechanical), T2 (architectural), T3 (semantic), each with independent retry budgets
+- **Tiered compliance** — T1 (mechanical), T2 (architectural), T3 (semantic), T-ARCH (principles), each with independent retry budgets
 
 ## Pipeline at a Glance
 
@@ -125,7 +125,7 @@ For the complete pipeline specification, agent routing, dispatch envelope format
 
 | Agent | Role | Mode |
 |-------|------|------|
-| `supreme-leader` | Orchestrator — dispatches tasks to specialists, enforces pipeline | primary |
+| `supreme-leader` | Orchestrator — dispatches tasks to specialists, enforces pipeline, manages passports | primary |
 | `software-engineer` | Architecture, API design, HAL interfaces, T2 & T-ARCH review | subagent |
 | `hardware-engineer` | Datasheet verification, register models, timing constraints | subagent |
 | `wireless-expert` | RF protocol compliance, channel mapping, modulation | subagent |
@@ -208,6 +208,20 @@ What the flagging agent recommends.
 | `designs/` | Design documents |
 | `chores/` | Small tasks |
 | `reviews/` | Review records |
+| `passports/` | Pipeline passports tracking completed steps |
+
+### Pipeline Passport
+
+Every task carries a **passport** that tracks which pipeline steps have been completed. No step may be skipped without written justification.
+
+**Key rules:**
+
+1. **No step without a stamp** — every step must be checked off before the next step begins
+2. **No skip without justification** — a written justification and Supreme Leader authorisation are required
+3. **Loops are tracked** — every A→B→A loop is recorded in the passport's Loop History section
+4. **Passport travels with dispatch** — the passport file path is included in every dispatch envelope
+
+Passports are stored in `docs/project-management/passports/<ticket-id>-passport.md` and are created by the PM when a ticket is opened. For the full passport format and rules, see `.opencode/skills/pipeline-passport/SKILL.md`.
 
 ## How to Add Your Own Domain Skills
 

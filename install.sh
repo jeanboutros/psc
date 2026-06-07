@@ -401,6 +401,7 @@ init_pm_dirs() {
         "designs"
         "chores"
         "reviews"
+        "passports"
     )
 
     for subdir in "${pm_subdirs[@]}"; do

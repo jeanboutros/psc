@@ -2,10 +2,6 @@
 
 > This is the deep dive. For the overview, see [../README.md](../README.md).
 
-## The Politburo Standing Committee Model
-
-> This is the deep dive. For the overview, see [../README.md](../README.md).
-
 ## The Standing Committee Model
 
 PSC draws its execution philosophy from the efficiency of standing committees: small groups with clear mandates, rapid decision-making, and enforced accountability. Every agent has exactly one job. Every gate passes or fails objectively. No infinite review cycles, no scope creep, no "looks good to me" rubber stamps.
@@ -31,7 +27,7 @@ The Supreme Leader is the orchestrator — it dispatches work, enforces protocol
 
 - All 6 specialists issue **APPROVED** or **CONDITIONAL PASS**
 - T-ARCH passes
-- On fail: loop back to A1 with specific critique (max 3 loops at T3)
+- On fail: loop back to A1 with specific critique (max 3 loops per tier)
 
 ---
 
@@ -235,7 +231,7 @@ All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
 | C1 | Challenge complete | C2 | Synthesis produced |
 | C2 | Reviews complete | C3 | All 6 specialists reviewed |
 | C3 | C-GATE passes | COMMIT | All APPROVED + T1 pass + T-ARCH pass |
-| C3 | C-GATE fails | C2 or B2 | Route to fixer (max 3× per tier) |
+| C3 | C-GATE fails | C0 or C2 or B2 | T1 fail → C0 (Code Architect fixes, re-run T1); T3 fail → C2 (specialist re-review); T-ARCH fail → Software Engineer (architectural fix) |
 | Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents violation report to user |
 
 ---
@@ -250,6 +246,7 @@ phase: "<A|B|C>"
 step: "<A0|A1|A2|A3|B1|B2|B2a|B3|B3a|C0|C1|C2|C3>"
 trigger: "<reason for this dispatch>"
 agent: "<agent-role>"
+passport: "docs/project-management/passports/<ticket-id>-passport.md"
 skills_loaded:
   - "assumption-trap"
   - "compliance-gate"
@@ -277,6 +274,7 @@ OWASP_expansion: "<none | list of added compliance categories>"
 | `step` | Current step within the phase |
 | `trigger` | Why this dispatch occurred |
 | `agent` | The agent being dispatched to |
+| `passport` | Path to the pipeline passport file tracking completed steps for this task |
 | `skills_loaded` | Skills loaded for this dispatch (always includes core) |
 | `expected_outcomes` | Concrete, verifiable deliverables expected |
 | `next_agent` | Who receives the output next |
@@ -291,7 +289,7 @@ OWASP_expansion: "<none | list of added compliance categories>"
 |--------|-------|------------|
 | Architecture design | Software Engineer | assumption-trap, compliance-gate, type-design-review |
 | Register model design | Hardware Engineer | assumption-trap, datasheet-verification, domain |
-| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, domain |
+| RF protocol design | Wireless Expert | assumption-trap, datasheet-verification, nrf24l01plus, ble-protocol |
 | Security analysis | Security Reviewer | assumption-trap, silent-failure, memory-safety |
 | Test strategy | Test Engineer | assumption-trap, test-driven-development |
 | Documentation plan | Docs Writer | assumption-trap, verification-before-completion |
@@ -300,6 +298,7 @@ OWASP_expansion: "<none | list of added compliance categories>"
 | T2 architectural review | Software Engineer | compliance-gate, type-design-review |
 | T3 semantic review | All 6 specialists | compliance-gate, domain-specific skills |
 | T-ARCH review | Software Engineer | compliance-gate, type-design-review |
+| Memory safety review | Memory Safety | assumption-trap, memory-safety |
 | Gate orchestration | Supreme Leader | pipeline, compliance-gate, flag-protocol |
 | Dispatch/routing | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
@@ -358,6 +357,21 @@ When a task is dispatched, skills must be loaded in this order:
 2. **Domain skills** (loaded based on task): project-specific skills matching the tech stack
 3. **Phase skills** (loaded based on phase): brainstorming (Phase A), incremental-execution (Phase B), grill-me (Phase A or C Dual-Model Challenge)
 4. **Compliance expansion** (loaded based on OWASP triggers): review task for new concern categories and load additional compliance checks as needed
+
+---
+
+## Pipeline Passport
+
+Every task carries a **passport** that tracks which pipeline steps have been completed. No step may be skipped without written justification. An agent receiving a task with a missing previous step must reject it and return STATUS: BLOCKED to the Supreme Leader.
+
+Passports are stored in `docs/project-management/passports/<ticket-id>-passport.md` and are created by the PM when a ticket is opened. For the full passport format and rules, see `.opencode/skills/pipeline-passport/SKILL.md`.
+
+Key passport rules:
+
+1. **No step without a stamp** — every step must be checked off before the next step begins
+2. **No skip without justification** — a written justification and Supreme Leader authorisation are required
+3. **Loops are tracked** — every A→B→A loop is recorded in the passport's Loop History section
+4. **Passport travels with dispatch** — the passport file path is included in every dispatch envelope
 
 ---
 
