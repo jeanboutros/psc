@@ -20,27 +20,28 @@ PSC brings that execution philosophy to multi-agent AI development:
 
 ```mermaid
 flowchart TD
-    A[A0: Task Definition] --> B[A1: Specialist Review]
+    A[A0: Task Definition + Domain Classification] --> B[A1: Specialist Review]
     B --> C[A2: Dual-Model Challenge]
-    C --> D{A-GATE: T3 + T-ARCH}
-    D -->|PASS| E[B1: Plan Units]
-    D -->|FAIL 3x| ESC1[Escalate to User]
-    E --> F[B2: Apply Unit]
-    F --> G{B-UNIT-GATE: T1 + T-ARCH}
-    G -->|PASS| H{More Units?}
-    G -->|FAIL 3x| ESC2[Escalate to User]
-    H -->|YES| F
-    H -->|NO| I{B-FINAL-GATE: T1 + T2 + T-ARCH}
-    I -->|PASS| J[C0: T1 Re-run]
-    I -->|FAIL 3x| ESC3[Escalate to User]
-    J --> K[C1: Dual-Model Challenge]
-    K --> L[C2: Specialist Approval]
-    L --> M{C-GATE: T1 + T3 + T-ARCH}
-    M -->|PASS| N[Commit]
-    M -->|FAIL 3x| ESC4[Escalate to User]
+    C --> D[A2a: ADR Creation]
+    D --> E{A-GATE: T3 + T-ARCH}
+    E -->|PASS| F[B1: Plan Units]
+    E -->|FAIL 3x| ESC1[Escalate to User]
+    F --> G[B2: Apply Unit]
+    G --> H{B-UNIT-GATE: T1 + T-ARCH}
+    H -->|PASS| I{More Units?}
+    H -->|FAIL 3x| ESC2[Escalate to User]
+    I -->|YES| G
+    I -->|NO| J{B-FINAL-GATE: T1 + T2 + T-ARCH}
+    J -->|PASS| K[C0: T1 Re-run]
+    J -->|FAIL 3x| ESC3[Escalate to User]
+    K --> L[C1: Dual-Model Challenge]
+    L --> M[C2: Specialist Approval]
+    M --> N{C-GATE: T1 + T3 + T-ARCH}
+    N -->|PASS| O[Commit]
+    N -->|FAIL 3x| ESC4[Escalate to User]
 
     style A fill:#1a1a2e,color:#e0e0e0
-    style N fill:#2d6a4f,color:#fff
+    style O fill:#2d6a4f,color:#fff
     style ESC1 fill:#9d0208,color:#fff
     style ESC2 fill:#9d0208,color:#fff
     style ESC3 fill:#9d0208,color:#fff
@@ -51,17 +52,17 @@ flowchart TD
 
 | Phase | Purpose | Key Mechanism |
 |-------|---------|---------------|
-| **A — Requirements & Design** | Define what and how before writing code | Parallel specialist review + adversarial challenge |
+| **A — Requirements & Design** | Define what and how before writing code | Task domain classification + parallel specialist review + adversarial challenge + ADR creation |
 | **B — Build** | Implement incrementally with self-validation | PAU loop (Plan → Apply → Validate) per unit + tiered gates |
-| **C — Multi-Agent Verify** | Final check before commit | Dual-Model Challenge + 6 specialist approvals |
+| **C — Multi-Agent Verify** | Final check before commit | Dual-Model Challenge + specialist approvals (cross-document consistency) |
 
 ### The Four Compliance Tiers
 
 | Tier | Type | Who Runs | What It Checks |
 |------|------|----------|---------------|
-| **T1** | Mechanical | Automated | Build passes, Doxygen, no banned patterns, no raw integers in public API |
+| **T1** | Mechanical | Automated | Build passes, doc-standard comments, no banned patterns, no raw integers in public API |
 | **T2** | Architectural | Software Engineer | Platform boundary, namespace hygiene, API surface, no mutable globals |
-| **T3** | Semantic | All 6 specialists | Datasheet fidelity, protocol correctness, security, test coverage, docs |
+| **T3** | Semantic | All dispatched specialists | Datasheet fidelity, protocol correctness, security, test coverage, docs (including cross-document consistency) |
 | **T-ARCH** | Principles | Software Engineer | Logical consistency, structural soundness, principle alignment |
 
 Each tier has an **independent 3-retry budget**. After 3 failures at any tier, escalation to the user — no infinite loops.
@@ -110,10 +111,11 @@ your-project/
       epics/                   # Epic definitions
       clarifications/          # Clarification requests
       advisories/              # Advisory flags
-      adr/                     # Architecture decision records
       designs/                 # Design documents
       chores/                  # Chores
       reviews/                 # Review records
+    adr/                     # Architecture decision records
+    pipeline/
 ```
 
 ## Deep Dive
@@ -130,10 +132,11 @@ For the complete pipeline specification, agent routing, dispatch envelope format
 | `wireless-expert` | RF protocol compliance, channel mapping, modulation | subagent |
 | `security-reviewer` | Buffer safety, stack depth, secrets handling, attack surfaces | subagent |
 | `test-engineer` | Test strategy, static_assert, edge cases, coverage | subagent |
-| `docs-writer` | Doxygen, learning docs, reference verification | subagent |
+| `docs-writer` | Documentation quality (language-agnostic — loads doc-standard skill per language), learning docs, reference verification | subagent |
 | `code-architect` | Primary implementation agent (PAU loop, incremental build) | subagent |
 | `memory-safety` | C++ memory safety, RAII, heap analysis, ASAN | subagent |
 | `pm` | Task master — sole authority for creating tasks and tickets | subagent |
+| `skill-recruiter` | Online skill search, safety scanning, skill gap detection, conversation synthesis | subagent |
 | `product-designer` | Vision extraction, requirements discovery — helps users articulate what they want | subagent (optional) |
 | `ux-engineer` | Usability, state completeness, accessibility, interaction design | subagent (optional) |
 | `ui-engineer` | Frontend implementation — builds production-grade UI using specified stack | subagent (optional) |
@@ -282,6 +285,7 @@ Human review and testing status for every file in this project.
 | `agents/pm.md` | [ ] | [ ] |
 | `agents/product-designer.md` | [ ] | [ ] |
 | `agents/security-reviewer.md` | [ ] | [ ] |
+| `agents/skill-recruiter.md` | [ ] | [ ] |
 | `agents/software-engineer.md` | [ ] | [ ] |
 | `agents/supreme-leader.md` | [ ] | [ ] |
 | `agents/test-engineer.md` | [ ] | [ ] |
@@ -297,8 +301,11 @@ Human review and testing status for every file in this project.
 | `skills/core/brainstorming/SKILL.md` | [ ] | [ ] |
 | `skills/core/compliance-gate/SKILL.md` | [ ] | [ ] |
 | `skills/core/context7-docs/SKILL.md` | [ ] | [ ] |
+| `skills/core/cross-document-consistency/SKILL.md` | [ ] | [ ] |
 | `skills/core/datasheet-verification/SKILL.md` | [ ] | [ ] |
+| `skills/core/doxygen-cpp/SKILL.md` | [ ] | [ ] |
 | `skills/core/flag-protocol/SKILL.md` | [ ] | [ ] |
+| `skills/core/github/SKILL.md` | [ ] | [ ] |
 | `skills/core/grill-me/SKILL.md` | [ ] | [ ] |
 | `skills/core/incremental-execution/SKILL.md` | [ ] | [ ] |
 | `skills/core/memory-safety/SKILL.md` | [ ] | [ ] |
@@ -309,6 +316,7 @@ Human review and testing status for every file in this project.
 | `skills/core/review-confidence/SKILL.md` | [ ] | [ ] |
 | `skills/core/self-audit-checklist/SKILL.md` | [ ] | [ ] |
 | `skills/core/silent-failure/SKILL.md` | [ ] | [ ] |
+| `skills/core/skill-recruiter/SKILL.md` | [ ] | [ ] |
 | `skills/core/systematic-debugging/SKILL.md` | [ ] | [ ] |
 | `skills/core/tdd-cpp/SKILL.md` | [ ] | [ ] |
 | `skills/core/test-driven-development/SKILL.md` | [ ] | [ ] |

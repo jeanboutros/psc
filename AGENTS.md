@@ -273,8 +273,11 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | brainstorming | Phase A creative exploration |
 | compliance-gate | Tiered gate system (T1/T2/T3/T-ARCH) |
 | context7-docs | Fetch up-to-date library/API docs (CLI → MCP → URL fallback) |
+| cross-document-consistency | Grep-based cross-document checks (DC-1 through DC-4) |
 | datasheet-verification | Verify claims against source documents |
+| doxygen-cpp | Doxygen documentation standard for C/C++ projects |
 | flag-protocol | Structured request format for non-PM agents |
+| github | Conventional commits, SSH auth, safe push, commit granularity |
 | grill-me | Adversarial design review |
 | incremental-execution | Unit-by-unit implementation |
 | memory-safety | Memory safety review (C/C++ projects) |
@@ -285,6 +288,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | review-confidence | 0-100 confidence scoring |
 | self-audit-checklist | Mandatory pre-verdict checklist |
 | silent-failure | Detect silent failure modes |
+| skill-recruiter | Online skill search, safety scanning, skill gap detection, conversation synthesis |
 | systematic-debugging | Structured debugging protocol |
 | tdd-cpp | Test-driven development for C++ |
 | test-driven-development | Generic TDD loop |
