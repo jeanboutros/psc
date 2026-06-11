@@ -14,19 +14,34 @@ The Supreme Leader is the orchestrator — it dispatches work, enforces protocol
 
 **Goal:** Define and validate "What" and "How" before writing a single line of code.
 
+### Task Domain Classification
+
+Before dispatching Phase A, the task scope is classified to determine the specialist roster. The specialist count is **not fixed** — it depends on what the task touches.
+
+| Domain Signal | Required Specialist |
+|---------------|-------------------|
+| Always | SW Engineer, Test Engineer, Docs Writer |
+| Hardware, registers, GPIO, timers, peripherals | Hardware Engineer |
+| Wireless, RF, BLE, radio protocols | Wireless Expert |
+| Auth, secrets, crypto, network, input parsing | Security Reviewer |
+| UI, frontend, dashboard, screens, UX | Product Designer + UX Engineer |
+| Frontend code (HTML/CSS/JS/TSX/React/Vue) | UI Engineer (Phase B) |
+
 ### Sub-steps
 
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
-| A0 | Task Definition | Produce detailed task specification: acceptance criteria, files, constraints, test strategy, doc plan | All agents collaborate |
-| A1 | Parallel Specialist Review | All 6 specialists review the proposal independently | SW Engineer, HW Engineer, Wireless Expert, Security Reviewer, Test Engineer, Docs Writer |
+| A0 | Task Definition | Produce detailed task specification: acceptance criteria, files, constraints, test strategy, doc plan. **Classify task domain** to determine specialist roster. | All agents collaborate |
+| A1 | Parallel Specialist Review | All applicable specialists review the proposal independently | Specialist roster per Task Domain Classification |
 | A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques | Supreme Leader orchestrates |
-| A3 | A-GATE | T3 + T-ARCH compliance check | All 6 specialists (T3), SW Engineer (T-ARCH) |
+| A2a | ADR Creation | Every resolved design decision from A2 MUST have an ADR file created at `docs/adr/<adr-id>.md`. Use `node docs/project-management/next-id.mjs adr` to get the next ADR sequence number. | SW Engineer (writes), Docs Writer (reviews) |
+| A3 | A-GATE | T3 + T-ARCH compliance check | All dispatched specialists (T3), SW Engineer (T-ARCH) |
 
 ### A-GATE Pass Criteria
 
-- All 6 specialists issue **APPROVED** or **CONDITIONAL PASS**
+- All dispatched specialists issue **APPROVED** or **CONDITIONAL PASS**
 - T-ARCH passes
+- Every resolved design decision has an ADR file
 - On fail: loop back to A1 with specific critique (max 3 loops per tier)
 
 ---
@@ -75,12 +90,12 @@ Each unit follows **Plan → Apply → Validate**:
 |------|------|-------------|-----|
 | C0 | T1 Re-run | Mechanical compliance re-check on final codebase | Code Architect |
 | C1 | Dual-Model Challenge (Verification) | Primary verifier + challenger verifier | Supreme Leader orchestrates |
-| C2 | Parallel Specialist Approval | All 6 specialists review independently | All 6 specialists |
-| C3 | C-GATE | T1 re-run + T3 + T-ARCH | Code Architect (T1), Specialists (T3), SW Engineer (T-ARCH) |
+| C2 | Parallel Specialist Approval | All dispatched specialists review independently | All dispatched specialists |
+| C3 | C-GATE | T1 re-run + T3 + T-ARCH | Code Architect (T1), Dispatched specialists (T3), SW Engineer (T-ARCH) |
 
 ### C-GATE Pass Criteria
 
-- T1 passes + all 6 APPROVED + T-ARCH passes
+- T1 passes + all dispatched specialists APPROVED + T-ARCH passes
 
 ---
 
@@ -94,7 +109,7 @@ Every gate checks one or more compliance tiers. Each tier has an **independent r
 |---|-------|-----------|
 | 1 | Build passes | Project build command exits 0 |
 | 2 | No compiler warnings | `-Werror` is active; any warning is a failure |
-| 3 | Doxygen on all public API | Every public function/class/struct has `/** ... */` Doxygen |
+| 3 | Doc-standard on all public API | Every public function/class/struct has a doc comment per the language-specific standard (e.g. `/** ... */` for Doxygen, JSDoc for JS) |
 | 4 | No decision references in code | No `D-1:`, no "replaces the former..." |
 | 5 | No raw integers in public API | Finite-value fields use `enum class`, not `uint8_t` |
 | 6 | Reserved bits written as 0 | Register writes clear reserved bits |
@@ -111,15 +126,15 @@ Every gate checks one or more compliance tiers. Each tier has an **independent r
 | 4 | No mutable globals | Stateful singletons forbidden |
 | 5 | Build dependencies | Component dependencies correct and minimal |
 
-### T3 — Semantic (All 6 Specialists)
+### T3 — Semantic (All Dispatched Specialists)
 
-All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
+All dispatched specialists (per the task-driven roster) must issue APPROVED or CONDITIONAL PASS:
 - Software Engineer — architecture, API surface, SOLID
-- Hardware Engineer — datasheet fidelity, register correctness, timing
-- Wireless Expert — protocol compliance, channel mapping, modulation
-- Security Reviewer — attack surfaces, buffer safety, secrets handling
+- Hardware Engineer — datasheet fidelity, register correctness, timing (if in scope)
+- Wireless Expert — protocol compliance, channel mapping, modulation (if in scope)
+- Security Reviewer — attack surfaces, buffer safety, secrets handling (if in scope)
 - Test Engineer — test coverage, edge cases, static assertions
-- Docs Writer — documentation completeness, reference accuracy
+- Docs Writer — documentation completeness, reference accuracy, cross-document consistency
 
 ### T-ARCH — Structural & Principles
 
@@ -138,21 +153,21 @@ All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
                                     ┌───────────────────────────────────────────────┐
                                     │                                               │
                                     ▼                                               │
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐│
-│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY ││
-│  Def     │    │Parallel │    │Challenge│   │T3+T-ARCH│    │         │    │ (unit)  ││
-└─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘│
-                                                     │                              │     │
-                                                     │ FAIL (3× T3 or T-ARCH)        │     │
-                                                     │ ┌───────────────────────────┘  │     │
-                                                     │ │  PASS                         │     │
-                                                     ▼ ▼                              ▼     │
-                                               ┌──────────┐                    ┌──────────┐ │
-                                               │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │ │
-                                               │(loop back│                   │GATE      │ │
-                                               │ with cri-│                   │T1+T-ARCH │ │
-                                               │ tique)    │                   └────┬─────┘ │
-                                               └──────────┘                        │       │
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐│
+│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY ││
+│  Def     │    │Parallel │    │Challenge│    │Create   │    │T3+T-ARCH│    │         │    │ (unit)  ││
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘│
+                                                                  │                              │     │
+                                                                  │ FAIL (3× T3 or T-ARCH)        │     │
+                                                                  │ ┌───────────────────────────┘  │     │
+                                                                  │ │  PASS                         │     │
+                                                                  ▼ ▼                              ▼     │
+                                                            ┌──────────┐                    ┌──────────┐ │
+                                                            │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │ │
+                                                            │(loop back│                   │GATE      │ │
+                                                            │ with cri-│                   │T1+T-ARCH │ │
+                                                            │ tique)    │                   └────┬─────┘ │
+                                                            └──────────┘                        │       │
                                                                                        │
                                                          PASS ────────────────────┘       │
                                                                                            │
@@ -214,10 +229,11 @@ All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
 
 | From | Event | To | Condition |
 |------|-------|----|-----------|
-| A0 | Task defined | A1 | All agents have task spec |
-| A1 | Reviews complete | A2 | All 6 specialists reviewed |
-| A2 | Challenge complete | A3 | Synthesis produced |
-| A3 | A-GATE passes | B1 | All APPROVED/CONDITIONAL PASS + T-ARCH passes |
+| A0 | Task defined | A1 | Task domain classified, specialist roster determined |
+| A1 | Reviews complete | A2 | All dispatched specialists reviewed |
+| A2 | Challenge complete | A2a | Synthesis produced, decisions identified |
+| A2a | ADRs created | A3 | ADR file exists for every resolved decision |
+| A3 | A-GATE passes | B1 | All dispatched specialists APPROVED/CONDITIONAL PASS + T-ARCH passes + ADRs present |
 | A3 | A-GATE fails | A1 | REJECTED or T-ARCH fail; loop back (max 3×) |
 | B1 | Plan complete | B2 | Logical units identified |
 | B2 | Unit implemented | B2a | Build passes locally |
@@ -229,8 +245,8 @@ All 6 specialist agents must issue APPROVED or CONDITIONAL PASS:
 | C0 | T1 re-run passes | C1 | All T1 checks pass |
 | C0 | T1 re-run fails | B2 (fix) | Code Architect fixes (max 3×) |
 | C1 | Challenge complete | C2 | Synthesis produced |
-| C2 | Reviews complete | C3 | All 6 specialists reviewed |
-| C3 | C-GATE passes | COMMIT | All APPROVED + T1 pass + T-ARCH pass |
+| C2 | Reviews complete | C3 | All dispatched specialists reviewed |
+| C3 | C-GATE passes | COMMIT | All dispatched APPROVED + T1 pass + T-ARCH pass |
 | C3 | C-GATE fails | C0 or C2 or B2 | T1 fail → C0 (Code Architect fixes, re-run T1); T3 fail → C2 (specialist re-review); T-ARCH fail → Software Engineer (architectural fix) |
 | Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents violation report to user |
 
@@ -296,13 +312,16 @@ OWASP_expansion: "<none | list of added compliance categories>"
 | Implementation | Code Architect | pau-loop, incremental-execution, compliance-gate |
 | T1 compliance check | Code Architect | compliance-gate, verification-before-completion |
 | T2 architectural review | Software Engineer | compliance-gate, type-design-review |
-| T3 semantic review | All 6 specialists | compliance-gate, domain-specific skills |
+| T3 semantic review | All dispatched specialists | compliance-gate, domain-specific skills |
 | T-ARCH review | Software Engineer | compliance-gate, type-design-review |
 | Memory safety review | Memory Safety | assumption-trap, memory-safety |
 | Gate orchestration | Supreme Leader | pipeline, compliance-gate, flag-protocol |
 | Dispatch/routing | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
 | Debugging | Code Architect | systematic-debugging, domain |
+| Product vision / requirements discovery | Product Designer | assumption-trap, design-taste, ux-patterns |
+| Interaction design / UX review | UX Engineer | assumption-trap, ux-patterns, design-taste |
+| UI implementation | UI Engineer | pau-loop, incremental-execution, design-taste, ux-patterns |
 
 ---
 
