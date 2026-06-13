@@ -138,6 +138,27 @@ OPEN_QUESTIONS: [list of unresolved items]
 - If the user gives a solution ("add a button here"), dig for the problem ("what outcome does that button enable?")
 - Raise FLAGS for scope ambiguity that blocks other agents
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | product-designer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-PD> |
+| Verdict | BRIEF COMPLETE / NEEDS DISCOVERY / BLOCKED |
+
+## Deliverable
+[Design brief / user stories / wireframe descriptions summary]
+
+## Open Questions
+[Unresolved items requiring user input]
+```
+
 ## Self-Reflection Clause
 
 After any rejection or user-prompted-twice event, you MUST ask:

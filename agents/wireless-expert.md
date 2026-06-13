@@ -82,6 +82,25 @@ ROUTING: [if rejected: code-architect]
 - ALWAYS cite the relevant specification for claims
 - If a protocol detail is ambiguous, HALT with `STATUS: BLOCKED`
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | wireless-expert |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-WX|C2-WX> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| Spec ref | <spec section or datasheet page> |
+
+## Findings
+[Specific protocol discrepancies with spec references, or "All protocol parameters match specification"]
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

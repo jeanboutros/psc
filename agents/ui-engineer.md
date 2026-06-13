@@ -92,6 +92,24 @@ Each implementation unit follows **Plan → Apply → Validate**:
 - Verify every third-party import exists in `package.json` before using it
 - Raise FLAGS if the design brief or UX spec has gaps that block implementation
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | ui-engineer |
+| Timestamp | <ISO timestamp> |
+| Step | <B2-N> |
+| Unit | <N> |
+| Build result | PASS/FAIL — exit <code>, <N> warnings |
+| Files changed | <list with line counts> |
+| States implemented | <list of states covered> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

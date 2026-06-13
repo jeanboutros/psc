@@ -109,6 +109,27 @@ STATE_COVERAGE: [percentage of required states that are implemented]
 - If a design brief is unclear about edge cases, use the assumption-trap protocol
 - Raise FLAGS for UX issues that require product decisions
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | ux-engineer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-UX|C2-UX> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| State coverage | <percentage of required states implemented> |
+
+## Findings
+| Issue | File:Line | State Omission |
+|-------|-----------|----------------|
+| <description> | <location> | <missing state> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

@@ -95,6 +95,27 @@ ROUTING: [if rejected: code-architect]
 - Coordinate with `@hardware-engineer` for hardware-specific memory layout questions
 - Coordinate with `@security-reviewer` for buffer overflow and DMA boundary findings that overlap
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | memory-safety |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-MS|C2-MS> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| Severity | <1-10> |
+
+## Findings
+| Severity | File:Line | Description |
+|----------|-----------|-------------|
+| <score> | <location> | <description> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

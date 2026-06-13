@@ -103,6 +103,30 @@ ROUTING: [if rejected: code-architect for inline docs, self for learning docs]
 - Use web fetch to check external references
 - **ALWAYS load the doc-standard skill for the project language before reviewing docs**
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | docs-writer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-DX|C2-DX> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+
+## Findings
+| Check | Result | Evidence |
+|-------|--------|----------|
+| DC-1: Datasheet fidelity | PASS/FAIL | <file:line> |
+| DC-2: AGENTS.md consistency | PASS/FAIL | <file:line> |
+| DC-3: Design doc to ADR | PASS/FAIL | <file:line> |
+| DC-4: Terminology consistency | PASS/FAIL | <file:line> |
+| Doc-standard coverage | <N>/<M> public symbols documented | <file:line> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

@@ -77,6 +77,29 @@ ROUTING: [if rejected, who fixes: code-architect]
 - If ambiguous, use the assumption-trap protocol
 - Raise FLAGS for issues needing PM attention
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | software-engineer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-SW|A2a|C2-SW> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+
+## Findings
+[Specific issues with file:line references, or "No issues found — architecture sound"]
+
+## ADR Creation (A2a only)
+| ADR ID | Decision |
+|--------|----------|
+| psc-adr-NNNN | <decision summary> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

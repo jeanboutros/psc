@@ -94,6 +94,25 @@ ROUTING: [if rejected: code-architect]
 - ALWAYS cite datasheet page/table for each claim
 - If ambiguous, use the assumption-trap protocol
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | hardware-engineer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-HW|C2-HW> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| Datasheet ref | <page/table/figure> |
+
+## Findings
+[Specific discrepancies with datasheet references, or "All register models match datasheet"]
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

@@ -100,6 +100,45 @@ The Code Architect is responsible for mechanical compliance checks at unit and f
 - If ambiguous, use the assumption-trap protocol — do NOT guess
 - Raise FLAGS for issues needing PM attention
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | code-architect |
+| Timestamp | <ISO timestamp> |
+| Step | <B1|B2-N|B3|C0|COMMIT> |
+
+[Step-specific content below]
+
+### B1: PLAN
+| Units declared | <N> |
+| Unit descriptions | <list> |
+| Files identified | <list> |
+
+### B2-N: APPLY Unit N
+| Unit | <N> |
+| Build result | PASS/FAIL — exit <code>, <N> warnings |
+| Files changed | <list with line counts> |
+
+### B3: VALIDATE
+| Full build | PASS/FAIL — exit <code>, <N> warnings |
+| AC coverage | <N>/<M> acceptance criteria satisfied |
+
+### C0: T1 Re-run
+| T1 checks | <N>/9 passed |
+| Failures | <list if any> |
+
+### COMMIT
+| SHA | <commit hash> |
+| Files changed | <list> |
+| Commit message | <full message> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

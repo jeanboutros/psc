@@ -91,6 +91,27 @@ ROUTING: [if rejected: code-architect or self for test gaps]
 - ALWAYS write the test BEFORE claiming it passes
 - Use build command from AGENTS.md as validation
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | test-engineer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-TX|C2-TX> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| Coverage | <N>/<M> acceptance criteria have test evidence |
+
+## Findings
+| Gap | Description |
+|-----|-------------|
+| <untested behaviour> | <why it needs testing> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:

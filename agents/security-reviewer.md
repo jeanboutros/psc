@@ -92,6 +92,27 @@ ROUTING: [if rejected: code-architect]
 - ALWAYS provide proof-of-concept or specific scenario for high-severity findings
 - If risk assessment requires hardware knowledge, coordinate with `@hardware-engineer`
 
+## Log Writing Protocol
+
+After completing any step, write the outcome to the log file specified in `log_file` in the dispatch envelope:
+
+```markdown
+# <Step>: <Step Name>
+
+| Field | Value |
+|-------|-------|
+| Agent | security-reviewer |
+| Timestamp | <ISO timestamp> |
+| Step | <A1-SX|C2-SX> |
+| Verdict | APPROVED / CONDITIONAL PASS / REJECTED |
+| Severity | <1-10> |
+
+## Findings
+| Severity | File:Line | Description |
+|----------|-----------|-------------|
+| <score> | <location> | <description> |
+```
+
 ## Self-Reflection Clause
 
 After fixing any bug or resolving any issue that required debugging, you MUST ask:
