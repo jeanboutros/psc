@@ -1,53 +1,43 @@
 #!/usr/bin/env node
 
 /**
- * Generate the next ticket, epic, clarification, ADR, advisory, design, or chore number(s).
+ * Generate the next ticket, epic, adhoc, clarification, decision, advisory,
+ * mistake, ADR, or conversation number(s).
  *
  * Usage:
  *   node next-id.mjs ticket              # next ticket id
  *   node next-id.mjs ticket 5            # next 5 ticket ids
  *   node next-id.mjs epic                # next epic id
- *   node next-id.mjs epic 3              # next 3 epic ids
+ *   node next-id.mjs adhoc               # next adhoc id
  *   node next-id.mjs clarification       # next clarification id
- *   node next-id.mjs adr                 # next ADR id
+ *   node next-id.mjs decision            # next decision id
  *   node next-id.mjs advisory            # next advisory id
- *   node next-id.mjs design              # next design id
- *   node next-id.mjs chore               # next chore id
+ *   node next-id.mjs mistake             # next mistake id
+ *   node next-id.mjs adr                 # next ADR id
+ *   node next-id.mjs conversation        # next conversation id
  *   node next-id.mjs ticket --dry-run    # preview without updating counters
  *
  * Output (JSON, one object per run — easy for LLMs to parse):
- *   { "kind": "ticket", "ids": ["proj-0016"], "dryRun": false }
+ *   { "kind": "ticket", "ids": ["psc-0001"], "dryRun": false }
  */
 
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-
-// Counters file location: next to this script by default, or COUNTERS_PATH env var.
-// Prefix can be configured via ID_PREFIX env var (default: "psc").
-const ID_PREFIX = process.env.ID_PREFIX || "psc";
-const COUNTERS_PATH = process.env.COUNTERS_PATH || resolve(__dirname, "counters.json");
+const COUNTERS_PATH = resolve(__dirname, "counters.json");
 
 const KIND_CONFIG = {
-    ticket:        { key: "lastTicket",        prefix: ID_PREFIX,           width: 4 },
-    epic:          { key: "lastEpic",           prefix: `${ID_PREFIX}-epic`,    width: 3 },
-    clarification: { key: "lastClarification",   prefix: `${ID_PREFIX}-clar`,    width: 4 },
-    adr:           { key: "lastAdr",             prefix: `${ID_PREFIX}-adr`,     width: 4 },
-    advisory:      { key: "lastAdvisory",        prefix: `${ID_PREFIX}-adv`,     width: 4 },
-    design:        { key: "lastDesign",          prefix: `${ID_PREFIX}-design`,  width: 4 },
-    chore:         { key: "lastChore",           prefix: `${ID_PREFIX}-chore`,   width: 4 },
-};
-
-const DEFAULT_COUNTERS = {
-    lastTicket: 0,
-    lastEpic: 0,
-    lastClarification: 0,
-    lastAdr: 0,
-    lastAdvisory: 0,
-    lastDesign: 0,
-    lastChore: 0,
+    ticket:        { key: "lastTicket",        prefix: "psc",           width: 4 },
+    epic:          { key: "lastEpic",          prefix: "psc-epic",      width: 3 },
+    adhoc:         { key: "lastAdhoc",         prefix: "psc-adhoc",     width: 4 },
+    clarification: { key: "lastClarification", prefix: "psc-clar",      width: 4 },
+    decision:      { key: "lastDecision",      prefix: "psc-dec",       width: 4 },
+    advisory:      { key: "lastAdvisory",      prefix: "psc-adv",       width: 4 },
+    mistake:       { key: "lastMistake",       prefix: "psc-mistake",   width: 4 },
+    adr:           { key: "lastAdr",           prefix: "psc-adr",       width: 4 },
+    conversation:  { key: "lastConversation",  prefix: "psc-conv",      width: 4 },
 };
 
 // ── Argument parsing ────────────────────────────────────────────────
@@ -60,7 +50,7 @@ function parseArgs(argv) {
     const kind = positional[0];
     if (!kind || !(kind in KIND_CONFIG)) {
         console.error(
-            "Usage: node next-id.mjs <ticket|epic|clarification|adr|advisory|design|chore> [count] [--dry-run]",
+            "Usage: node next-id.mjs <ticket|epic|adhoc|clarification|decision|advisory|mistake|adr|conversation> [count] [--dry-run]",
         );
         process.exit(1);
     }
@@ -77,13 +67,7 @@ function parseArgs(argv) {
 // ── Counter I/O ─────────────────────────────────────────────────────
 
 function loadCounters() {
-    if (!existsSync(COUNTERS_PATH)) {
-        saveCounters(DEFAULT_COUNTERS);
-        return { ...DEFAULT_COUNTERS };
-    }
-    const stored = JSON.parse(readFileSync(COUNTERS_PATH, "utf-8"));
-    // Merge with defaults so new keys are added automatically
-    return { ...DEFAULT_COUNTERS, ...stored };
+    return JSON.parse(readFileSync(COUNTERS_PATH, "utf-8"));
 }
 
 function saveCounters(counters) {
