@@ -125,8 +125,9 @@ Before any retry is dispatched, the producing agent MUST output a Correction Rec
 4. **For each RC category**, take the corrective action defined above.
 5. **Produce a Correction Record** using the format above.
 6. **Append** the Correction Record to the passport's `## Correction Records` section.
-7. **If RC-4:** Notify Supreme Leader to update `skills_loaded` for the retry dispatch — this happens *before* the retry is sent.
-8. **Only then** proceed with the retry.
+7. **Write** the Correction Record to the ticket's log directory as `correction-retry-<N>.md` (where N is the retry attempt number). The log file path is in the dispatch envelope's `log_dir` field.
+8. **If RC-4:** Notify Supreme Leader to update `skills_loaded` for the retry dispatch — this happens *before* the retry is sent.
+9. **Only then** proceed with the retry.
 
 ---
 

@@ -73,10 +73,24 @@ Every step the pipeline requires for this task. Steps are checked off sequential
 - [ ] C1: Dual-Model Challenge (Verification) — primary + challenger
 - [ ] C2: Specialist Approval — all dispatched specialists
 - [ ] C3: C-GATE — T1 ✅/❌ | T3 ✅/❌ | T-ARCH ✅/❌ | Verdict: _______
+- [ ] C4: PM Completion Review — Decision: _______ | Closure type: _______
 
 ### Commit
 
-- [ ] COMMIT — all gates passed, all approvals issued
+- [ ] COMMIT — C4 decision CLOSE or CLOSE+NEW, all gates passed, all approvals issued
+
+## Post-Completion Decision
+
+After C4, the PM records the final decision here:
+
+| Field | Value |
+|-------|-------|
+| Decision | CLOSE / CLOSE+NEW / BLOCK / RE-DISPATCH / CANCEL / ARCHIVE |
+| Closure type | completed / cancelled / archived |
+| Rationale | <why this decision> |
+| New tickets spawned | <list of ticket IDs if CLOSE+NEW> |
+| Replacement ticket | <ticket ID if CANCEL> |
+| Delta analysis ticket | <ticket ID if CANCEL> |
 
 ## Step Log
 

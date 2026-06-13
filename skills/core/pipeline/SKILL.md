@@ -144,8 +144,10 @@ What becomes easier, harder, or blocked by this decision.
 | C1 | Dual-Model Challenge (Verification) | Primary verifier + challenger verifier | Supreme Leader orchestrates |
 | C2 | Parallel Specialist Approval | All dispatched specialists review independently | All dispatched specialists |
 | C3 | C-GATE | T1 re-run + T3 + T-ARCH + specialist finding skill check | Code Architect (T1), Dispatched specialists (T3), SW Engineer (T-ARCH), Skill Recruiter (skill gap) |
+| C4 | PM Completion Review | Review all verdicts, synthesis, gate results, gap reports, correction records. Decide: CLOSE / CLOSE+NEW / BLOCK / RE-DISPATCH / CANCEL / ARCHIVE. Move ticket to appropriate status directory. | PM |
 
-**C-GATE pass criteria:** T1 passes + all dispatched specialists APPROVED + T-ARCH passes + Skill Recruiter confirms no uncovered skill gaps from specialist findings.
+**C-GATE pass criteria:** T1 passes + all dispatched specialists APPROVED + T-ARCH passes + Skill Recruiter confirms no uncovered skill gaps from specialist findings → proceed to C4.
+**C4 pass criteria:** PM issues CLOSE or CLOSE+NEW → proceed to COMMIT. PM issues BLOCK → ticket moves to `blocked/`, pipeline paused. PM issues RE-DISPATCH → ticket moves to `open/`, new dispatch cycle. PM issues CANCEL → ticket moves to `closed/` (cancelled), replacement + delta analysis tickets created. PM issues ARCHIVE → ticket moves to `closed/` (archived).
 
 ---
 
@@ -250,7 +252,12 @@ What becomes easier, harder, or blocked by this decision.
 | C0 | T1 re-run fails | B2 (fix) | Code Architect fixes; re-run T1 (max 3×) |
 | C1 | Challenge complete | C2 | Synthesis produced |
 | C2 | Reviews complete | C3 | All dispatched specialists reviewed |
-| C3 | C-GATE passes | COMMIT | All dispatched APPROVED + T1 pass + T-ARCH pass |
+| C3 | C-GATE passes | C4 | All dispatched APPROVED + T1 pass + T-ARCH pass + skill coverage confirmed |
+| C4 | PM issues CLOSE or CLOSE+NEW | COMMIT | PM reviews all verdicts, synthesis, corrections; decides to close |
+| C4 | PM issues BLOCK | BLOCKED | Ticket moves to `blocked/`, clarification ticket created, pipeline paused |
+| C4 | PM issues RE-DISPATCH | A0 (new cycle) | Ticket moves to `open/` with rework notes, or new ticket created |
+| C4 | PM issues CANCEL | CLOSED (cancelled) | Ticket moves to `closed/`, replacement + delta analysis tickets created |
+| C4 | PM issues ARCHIVE | CLOSED (archived) | Ticket moves to `closed/`, no replacement |
 | C3 | C-GATE fails | C0 or C2 or B2 | T1 fail → C0 (Code Architect fixes, re-run T1); T3 fail → C2 (specialist re-review); T-ARCH fail → Software Engineer (architectural fix) |
 | Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents full violation report to user |
 
@@ -303,12 +310,15 @@ The Supreme Leader must return this to the user immediately. Do NOT proceed to r
 Every agent dispatch carries a structured envelope. This ensures context is preserved across handoffs.
 
 ```yaml
-ticket: "<task-id>"
+ticket: "<ticket-id>"
+ticket_type: "<feature|bugfix|adhoc|clarification|decision|advisory|mistake>"
 phase: "<A|B|C>"
-step: "<A0|A1|A2|A3|B1|B2|B2a|B3|B3a|C0|C1|C2|C3>"
+step: "<A0|A1|A2|A2a|A3|B1|B2|B2a|B3|B3a|C0|C1|C2|C3|C4>"
 trigger: "<reason for this dispatch>"
 agent: "<agent-role>"
 passport: "docs/project-management/passports/<ticket-id>-passport.md"
+log_dir: "docs/project-management/logs/tickets/<ticket-id>/"
+log_file: "docs/project-management/logs/tickets/<ticket-id>/<step-file>.md"
 skills_loaded:
   - "assumption-trap"
   - "compliance-gate"
@@ -333,12 +343,15 @@ OWASP_expansion: "<none | list of added compliance categories>"
 
 | Field | Description |
 |-------|-------------|
-| `ticket` | Unique task identifier from `docs/pipeline/TODO.md` |
+| `ticket` | Unique ticket identifier (e.g. `psc-0001`, `psc-adhoc-0001`, `psc-clar-0001`) |
+| `ticket_type` | Ticket type: `feature`, `bugfix`, `adhoc`, `clarification`, `decision`, `advisory`, `mistake` |
 | `phase` | Current pipeline phase (A, B, or C) |
-| `step` | Current step within the phase |
+| `step` | Current step within the phase (A0 through C4) |
 | `trigger` | Why this dispatch occurred (e.g. "A-GATE failed: T3.1 datasheet fidelity") |
 | `agent` | The agent being dispatched to |
 | `passport` | Path to the pipeline passport file tracking completed steps for this task |
+| `log_dir` | Path to the per-ticket log directory (e.g. `docs/project-management/logs/tickets/<ticket-id>/`) |
+| `log_file` | Path to the specific log file for this step (e.g. `docs/project-management/logs/tickets/<ticket-id>/A1-SW-software-engineer.md`) |
 | `skills_loaded` | List of skills loaded for this dispatch (always includes core skills) |
 | `expected_outcomes` | Concrete, verifiable deliverables expected |
 | `next_agent` | Who receives the output next |
@@ -368,6 +381,7 @@ Which agent handles which intent:
 | Gate orchestration | Supreme Leader | pipeline, compliance-gate, flag-protocol |
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
+| C4 post-completion review | PM | pipeline, pipeline-passport, flag-protocol |
 | Debugging | Code Architect | systematic-debugging, domain |
 | Product vision / requirements discovery | Product Designer | assumption-trap, design-taste, ux-patterns |
 | Interaction design / UX review | UX Engineer | assumption-trap, ux-patterns, design-taste |

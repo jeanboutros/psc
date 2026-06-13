@@ -25,7 +25,7 @@ Every flag MUST use this exact format:
 
 | Field | Value |
 |-------|-------|
-| Type | `task` / `clarification` / `decision` / `advisory` |
+| Type | `task` / `clarification` / `decision` / `advisory` / `adhoc` / `mistake` |
 | Priority | `critical` / `high` / `medium` / `low` |
 | Raised by | Agent role (e.g. "Code Architect", "Hardware Engineer") |
 | Blocking | `yes` / `no` — does this block the current pipeline step? |
