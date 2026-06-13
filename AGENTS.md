@@ -291,6 +291,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | self-audit-checklist | Mandatory pre-verdict checklist |
 | silent-failure | Detect silent failure modes |
 | skill-recruiter | Online skill search, safety scanning, skill gap detection, conversation synthesis |
+| software-engineering-principles | Clean Architecture, SOLID, DRY, TDD, C4 model, state machine docs, module dependency rules |
 | systematic-debugging | Structured debugging protocol |
 | tdd-cpp | Test-driven development for C++ |
 | test-driven-development | Generic TDD loop |

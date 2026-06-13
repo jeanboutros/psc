@@ -389,6 +389,7 @@ Human review and testing status for every file in this project.
 | `skills/core/self-audit-checklist/SKILL.md` | [ ] | [ ] |
 | `skills/core/silent-failure/SKILL.md` | [ ] | [ ] |
 | `skills/core/skill-recruiter/SKILL.md` | [ ] | [ ] |
+| `skills/core/software-engineering-principles/SKILL.md` | [ ] | [ ] |
 | `skills/core/systematic-debugging/SKILL.md` | [ ] | [ ] |
 | `skills/core/tdd-cpp/SKILL.md` | [ ] | [ ] |
 | `skills/core/test-driven-development/SKILL.md` | [ ] | [ ] |

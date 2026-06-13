@@ -24,7 +24,7 @@ When first dispatched, this agent MUST:
 1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list)
 3. Load domain skills matching tech stack entries (e.g. if AGENTS.md lists a hardware component, load its datasheet skill; if it lists a framework, load its skill; etc.)
-4. Load role-specific skills: type-design-review
+4. Load role-specific skills: type-design-review, software-engineering-principles
 
 ## State Machine
 Every dispatch carries a structured envelope:
