@@ -26,7 +26,9 @@ These files are the workflow definition. Changes here MUST be considered for pro
 | `skills/core/pipeline-passport/SKILL.md` | `.opencode/skills/pipeline-passport/SKILL.md` | Passport format and rules |
 | `skills/core/compliance-gate/SKILL.md` | `.opencode/skills/compliance-gate/SKILL.md` | Tiered compliance gate definitions |
 | **Pipeline rules in AGENTS.md** | AGENTS.md (relevant sections) | Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, Pipeline Enforcement Protocol |
-| `scripts/*` | `docs/pipeline/scripts/`, `docs/project-management/` | T1 checks, next-id, counters |
+| `scripts/*` | `docs/project-management/` | next-id, counters |
+| `docs/project-management/next-id.mjs` | `docs/project-management/next-id.mjs` | Atomic ID generator (9 kinds) |
+| `docs/project-management/counters.json` | `docs/project-management/counters.json` | Counter state (must exist, never recreated) |
 | `docs/pipeline.md` | `docs/pipeline.md` | Human-facing pipeline specification |
 | `install.sh` | N/A (run from PSC repo) | Installation script |
 

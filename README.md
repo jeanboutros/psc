@@ -37,24 +37,35 @@ flowchart TD
     K --> L[C1: Dual-Model Challenge]
     L --> M[C2: Specialist Approval]
     M --> N{C-GATE: T1 + T3 + T-ARCH}
-    N -->|PASS| O[Commit]
+    N -->|PASS| P[C4: PM Completion Review]
     N -->|FAIL 3x| ESC4[Escalate to User]
+    P -->|CLOSE / CLOSE+NEW| O[Commit]
+    P -->|BLOCK| BLK[Ticket → blocked/]
+    P -->|RE-DISPATCH| RD[Ticket → open/]
+    P -->|CANCEL| CAN[Ticket → closed/ cancelled + replacement + delta]
+    P -->|ARCHIVE| ARC[Ticket → closed/ archived]
 
     style A fill:#1a1a2e,color:#e0e0e0
     style O fill:#2d6a4f,color:#fff
+    style P fill:#3a5a8c,color:#fff
     style ESC1 fill:#9d0208,color:#fff
     style ESC2 fill:#9d0208,color:#fff
     style ESC3 fill:#9d0208,color:#fff
     style ESC4 fill:#9d0208,color:#fff
+    style BLK fill:#e09f3e,color:#000
+    style RD fill:#e09f3e,color:#000
+    style CAN fill:#9d0208,color:#fff
+    style ARC fill:#6c757d,color:#fff
 ```
 
-### The Three Phases
+### The Three Phases + Completion Review
 
 | Phase | Purpose | Key Mechanism |
 |-------|---------|---------------|
 | **A — Requirements & Design** | Define what and how before writing code | Task domain classification + parallel specialist review + adversarial challenge + ADR creation |
 | **B — Build** | Implement incrementally with self-validation | PAU loop (Plan → Apply → Validate) per unit + tiered gates |
 | **C — Multi-Agent Verify** | Final check before commit | Dual-Model Challenge + specialist approvals (cross-document consistency) |
+| **C4 — PM Completion Review** | Post-gate decision point | PM reviews all verdicts, synthesis, corrections, gaps. Decides: CLOSE / CLOSE+NEW / BLOCK / RE-DISPATCH / CANCEL / ARCHIVE |
 
 ### The Four Compliance Tiers
 
@@ -96,25 +107,30 @@ After installation, your project will have:
 ```
 your-project/
   .opencode/
-    agents/                    # 10 agent definitions
+    agents/                    # Agent definitions
     skills/                    # Core + selected domain skills
     merge/                     # Merge prompts for conflicts (if any)
   docs/
-    pipeline/
-      scripts/
     project-management/
-      next-id.mjs              # Ticket/epic/ADR ID generator
-      counters.json            # ID counters
-      open/                    # Open tickets
-      backlog/                 # Backlog tickets
-      closed/                  # Closed tickets
+      next-id.mjs              # Atomic ID generator (9 kinds: ticket, epic, adhoc, clarification, decision, advisory, mistake, adr, conversation)
+      counters.json            # ID counters (must exist, never recreated)
+      passports/               # Pipeline passports
+      tickets/                 # Ticket files (universal unit of work)
+        open/                  # Ready for dispatch
+        active/                # Currently in pipeline
+        closed/                # Completed (completed / cancelled / archived)
+        blocked/               # Waiting for clarification/dependency
       epics/                   # Epic definitions
-      clarifications/          # Clarification requests
+      adhoc/                   # Adhoc request tickets
+      clarifications/          # Clarification requests and resolutions
       advisories/              # Advisory flags
-      designs/                 # Design documents
-      chores/                  # Chores
-      reviews/                 # Review records
-    adr/                     # Architecture decision records
+      decisions/               # Decision records
+      logs/                    # Universal log directory
+        tickets/               # Per-ticket execution logs (one directory per ticket)
+        conversations/         # Auto-logged session conversations
+        index.md               # Cross-reference index of all logs
+      INDEX.md                 # Project management directory index
+    adr/                       # Architecture decision records
     pipeline/
 ```
 
@@ -164,18 +180,74 @@ Skills are the domain knowledge layer — agents are generic roles, and all proj
 
 ## Project Management
 
+### Universal Ticket System
+
+Every unit of work is a ticket. Nine ticket types, each with a type-appropriate pipeline path:
+
+| Type | ID Prefix | Pipeline Path | Example |
+|------|-----------|---------------|---------|
+| `feature` | `psc` | Full A→B→C→C4→COMMIT | New BLE protocol |
+| `bugfix` | `psc` | Full A→B→C→C4→COMMIT | Fix register bit |
+| `adhoc` | `psc-adhoc` | Full A→B→C→C4→COMMIT | Update README |
+| `clarification` | `psc-clar` | A-only: A0→A1→A3→C4 | User asks about pipeline |
+| `decision` | `psc-dec` | A-only: A0→A1→(A2)→(A2a)→A3→C4 | Choose architecture option |
+| `advisory` | `psc-adv` | Log-only: A0→C4 | Non-blocking finding |
+| `mistake` | `psc-mistake` | Log-only: A0→C4 | Bug outside active ticket |
+| `epic` | `psc-epic` | No pipeline — planning only | Large feature broken into tickets |
+| `conversation` | `psc-conv` | No ticket, no PM — auto-logged by Supreme Leader | Session discussion |
+
+### Ticket Lifecycle
+
+```
+FLAG → PM creates ticket in tickets/open/
+              │
+              ▼
+      Supreme Leader dispatches
+      Ticket → tickets/active/
+              │
+ ┌────────────┼────────────┐
+ ▼            ▼            ▼
+UNDERSTANDING C-GATE PASS C-GATE FAIL
+ERROR FOUND  → C4: PM     → open/
+→ closed/     reviews      (rework/new)
+(cancelled)       │
++ replacement  ┌──┼──┐
++ delta        ▼  ▼  ▼
+analysis    CLOSE CLOSE+NEW RE-DISPATCH
+            →closed/ →closed/ →open/
+            (completed)(completed)(new)
+                        + new tickets
+
+ARCHIVE → closed/ (archived)
+```
+
 ### Ticket IDs
 
-```bas likeh
+```bash
 node docs/project-management/next-id.mjs ticket         # next ticket id
 node docs/project-management/next-id.mjs ticket 5       # next 5 ticket ids
 node docs/project-management/next-id.mjs epic            # next epic id
+node docs/project-management/next-id.mjs adhoc           # next adhoc id
 node docs/project-management/next-id.mjs clarification   # next clarification id
+node docs/project-management/next-id.mjs decision        # next decision id
+node docs/project-management/next-id.mjs advisory        # next advisory id
+node docs/project-management/next-id.mjs mistake         # next mistake id
 node docs/project-management/next-id.mjs adr             # next ADR id
+node docs/project-management/next-id.mjs conversation    # next conversation id
 node docs/project-management/next-id.mjs ticket --dry-run  # preview only
 ```
 
-The ID prefix defaults to the project directory name but can be configured via `ID_PREFIX`.
+The counter file at `docs/project-management/counters.json` must exist. If deleted, the script fails — numbers are never reused.
+
+### Universal Logging
+
+Every agent outcome, decision, discussion, root cause, mistake, and bug is logged:
+
+| Log Type | Location | Format |
+|----------|----------|--------|
+| Per-step agent outcomes | `docs/project-management/logs/tickets/<ticket-id>/<step>.md` | One file per agent per step — no race conditions |
+| Session conversations | `docs/project-management/logs/conversations/<conv-id>.md` | Auto-logged by Supreme Leader at session end |
+| Log index | `docs/project-management/logs/index.md` | Cross-reference of all logs |
 
 ### Flag Protocol
 
