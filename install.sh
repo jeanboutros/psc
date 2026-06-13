@@ -34,6 +34,8 @@ NC='\033[0m'
 TARGET_DIR=""
 NON_INTERACTIVE=false
 CORE_ONLY=false
+FORCE=false
+COMPARE_ONLY=false
 
 for arg in "$@"; do
     case "$arg" in
@@ -45,6 +47,8 @@ for arg in "$@"; do
             echo "Options:"
             echo "  --non-interactive   Install all skills without prompting"
             echo "  --core-only         Install only core skills (no domain skills)"
+            echo "  -f, --force         Skip modification checks — overwrite all files"
+            echo "  --compare           Dry-run: compare source vs target, show what would change"
             echo "  --help              Show this help message"
             echo ""
             echo "If TARGET_DIR is not specified, the current directory is used."
@@ -58,6 +62,12 @@ for arg in "$@"; do
             ;;
         --core-only)
             CORE_ONLY=true
+            ;;
+        -f|--force)
+            FORCE=true
+            ;;
+        --compare)
+            COMPARE_ONLY=true
             ;;
         -*)
             echo -e "${RED}Unknown option: $arg${NC}" >&2
@@ -92,7 +102,6 @@ ID_PREFIX="${ID_PREFIX:-${PROJECT_NAME:-psc}}"
 AGENTS_DIR="$TARGET_DIR/.opencode/agents"
 CORE_SKILLS_DIR="$TARGET_DIR/.opencode/skills"
 DOMAIN_SKILLS_DIR="$TARGET_DIR/.opencode/skills"
-PIPELINE_SCRIPTS_DIR="$TARGET_DIR/docs/pipeline/scripts"
 PM_DIR="$TARGET_DIR/docs/project-management"
 
 MERGE_DIR="$TARGET_DIR/.opencode/merge"
@@ -101,7 +110,6 @@ MERGE_DIR="$TARGET_DIR/.opencode/merge"
 SRC_AGENTS_DIR="$SCRIPT_DIR/agents"
 SRC_CORE_SKILLS_DIR="$SCRIPT_DIR/skills/core"
 SRC_DOMAIN_SKILLS_DIR="$SCRIPT_DIR/skills/domain"
-SRC_SCRIPTS_DIR="$SCRIPT_DIR/scripts"
 
 # ─── Helper functions ────────────────────────────────────────────────────
 
@@ -110,113 +118,100 @@ ok()    { echo -e "${GREEN}[ OK ]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 fail()  { echo -e "${RED}[FAIL]${NC} $*"; }
 
-# Check if a file has been modified from a previous install
-# Returns 0 if safe to overwrite, 1 if modified (needs merge)
-is_file_modified() {
-    local target="$1"
-
-    if [ ! -f "$target" ]; then
-        return 0  # File doesn't exist, safe to create
-    fi
-
-    # If we're in a git repo, use git to check if the file was modified
-    if git -C "$(dirname "$target")" rev-parse --git-dir >/dev/null 2>&1; then
-        local rel_path
-        rel_path="$(cd "$(dirname "$target")" && git ls-files --error-unmatch "$(basename "$target")" 2>/dev/null)" || {
-            # File is not tracked by git — it's new or untracked
-            # Check if it looks like it was from a previous install
-            if head -5 "$target" 2>/dev/null | grep -qi "opencode-workflow\|opencode workflow\|installed by"; then
-                # Was installed by us before, safe to overwrite if unchanged by user
-                if git -C "$(dirname "$target")" diff --quiet -- "$(basename "$target")" 2>/dev/null; then
-                    return 0  # Unmodified since last commit, safe to overwrite
-                else
-                    return 1  # Modified by user, needs merge
-                fi
-            fi
-            return 1  # New untracked file, don't overwrite
-        }
-        # File is tracked by git
-        if git -C "$(dirname "$target")" diff --quiet HEAD -- "$(basename "$target")" 2>/dev/null; then
-            return 0  # Unmodified from HEAD, safe to overwrite
-        else
-            return 1  # Modified, needs merge
-        fi
-    fi
-
-    # Not in a git repo — use checksum comparison with a marker
-    local marker="${target}.opencode-workflow.sha256"
-    if [ -f "$marker" ]; then
-        local old_sha new_sha
-        old_sha="$(cat "$marker")"
-        new_sha="$(sha256sum "$target" | cut -d' ' -f1)"
-        if [ "$old_sha" = "$new_sha" ]; then
-            return 0  # Unchanged from previous install, safe to overwrite
-        else
-            return 1  # Modified since install, needs merge
-        fi
-    fi
-
-    # No marker file — assume it was manually created
-    # Check if it looks like an opencode file
-    if head -3 "$target" 2>/dev/null | grep -qi "description\|name\|mode\|opencode"; then
-        # Likely an opencode file, but we can't tell if it was modified
-        return 1  # Needs merge to be safe
-    fi
-
-    return 1  # Err on the side of caution
-}
-
-# Install a file, creating merge prompt if needed
+# Install a file, creating merge prompt if user modified it.
+# Uses cmp + checksum marker — deterministic, no git dependency.
+# In --compare mode, reports status without writing anything.
 install_file() {
     local src="$1"
     local dest="$2"
     local description="$3"
 
     if [ ! -f "$src" ]; then
-        warn "Source file missing: $src"
+        if [ "$COMPARE_ONLY" = true ]; then
+            echo -e "  ${RED}[MISS]${NC} $description — source missing: $src"
+        else
+            warn "Source file missing: $src"
+        fi
         return 1
     fi
 
     local dest_dir
     dest_dir="$(dirname "$dest")"
-    mkdir -p "$dest_dir"
 
     if [ ! -f "$dest" ]; then
-        # File doesn't exist — create it
+        if [ "$COMPARE_ONLY" = true ]; then
+            echo -e "  ${GREEN}[NEW]${NC}  $description — would create"
+            return 0
+        fi
+        mkdir -p "$dest_dir"
         cp "$src" "$dest"
         ok "Created: $description"
-        # Save checksum marker
         sha256sum "$dest" | cut -d' ' -f1 > "${dest}.opencode-workflow.sha256"
         return 0
     fi
 
-    # File exists — check if it was modified
-    if is_file_modified "$dest"; then
-        # Safe to overwrite
+    # --force: skip all checks, overwrite unconditionally
+    if [ "$FORCE" = true ]; then
+        if [ "$COMPARE_ONLY" = true ]; then
+            echo -e "  ${YELLOW}[FORCE]${NC} $description — would force-overwrite"
+            return 0
+        fi
+        mkdir -p "$dest_dir"
         cp "$src" "$dest"
-        ok "Updated: $description"
+        ok "Force-overwritten: $description"
         sha256sum "$dest" | cut -d' ' -f1 > "${dest}.opencode-workflow.sha256"
         return 0
-    else
-        # Modified by user — create merge prompt
-        local merge_file="$MERGE_DIR/$(basename "$dest").merge.md"
-        mkdir -p "$MERGE_DIR"
+    fi
 
-        local src_content dest_content
-        src_content="$(cat "$src")"
-        dest_content="$(cat "$dest")"
+    # Destination identical to current source — nothing to do
+    if cmp -s "$src" "$dest"; then
+        if [ "$COMPARE_ONLY" = true ]; then
+            echo -e "  ${BLUE}[SAME]${NC} $description — identical"
+        fi
+        return 0
+    fi
 
-        cat > "$merge_file" << MERGEEOF
+    # Destination differs from source. Check checksum marker to determine why.
+    local marker="${dest}.opencode-workflow.sha256"
+    if [ -f "$marker" ]; then
+        local old_sha new_sha
+        old_sha="$(cat "$marker")"
+        new_sha="$(sha256sum "$dest" | cut -d' ' -f1)"
+        if [ "$old_sha" = "$new_sha" ]; then
+            # Unchanged since last install — source was updated, safe to overwrite
+            if [ "$COMPARE_ONLY" = true ]; then
+                echo -e "  ${GREEN}[UPD]${NC}  $description — source updated, target unchanged"
+                return 0
+            fi
+            mkdir -p "$dest_dir"
+            cp "$src" "$dest"
+            ok "Updated: $description"
+            sha256sum "$dest" | cut -d' ' -f1 > "${dest}.opencode-workflow.sha256"
+            return 0
+        fi
+    fi
+
+    # User modified the file — create merge prompt
+    if [ "$COMPARE_ONLY" = true ]; then
+        echo -e "  ${YELLOW}[MOD]${NC}  $description — user modified, would create merge prompt"
+        return 0
+    fi
+
+    mkdir -p "$dest_dir"
+    local merge_file="$MERGE_DIR/$(basename "$dest").merge.md"
+    mkdir -p "$MERGE_DIR"
+
+    cat > "$merge_file" << MERGEEOF
 # Merge Required: $(basename "$dest")
 
 ## Source (opencode-workflow)
 \`\`\`
-${src_content}
+$(cat "$src")
 \`\`\`
 
 ## Target (your project)
 \`\`\`
-${dest_content}
+$(cat "$dest")
 \`\`\`
 
 ## Instructions
@@ -227,9 +222,8 @@ The file $(basename "$dest") has been modified locally. Please merge:
 4. Remove this merge file when done
 MERGEEOF
 
-        warn "Modified: $description — merge prompt created at $merge_file"
-        return 0
-    fi
+    warn "Modified: $description — merge prompt created at $merge_file"
+    return 0
 }
 
 # ─── Skill selection ─────────────────────────────────────────────────────
@@ -355,31 +349,15 @@ install_domain_skills() {
 
 install_scripts() {
     info "Installing scripts..."
-    mkdir -p "$PIPELINE_SCRIPTS_DIR"
     mkdir -p "$PM_DIR"
 
-    # t1-check.sh
-    install_file "$SRC_SCRIPTS_DIR/t1-check.sh" "$PIPELINE_SCRIPTS_DIR/t1-check.sh" "t1-check.sh"
-    chmod +x "$PIPELINE_SCRIPTS_DIR/t1-check.sh" 2>/dev/null || true
-
-    # Update PROJECT_ROOT in t1-check.sh to use the target directory
-    if [ -f "$PIPELINE_SCRIPTS_DIR/t1-check.sh" ]; then
-        # Replace the placeholder with the actual project root
-        sed -i "s|^PROJECT_ROOT=.*|PROJECT_ROOT=\"$TARGET_DIR\"|" "$PIPELINE_SCRIPTS_DIR/t1-check.sh" 2>/dev/null || true
-    fi
-
-    # next-id.mjs
-    install_file "$SRC_SCRIPTS_DIR/next-id.mjs" "$PM_DIR/next-id.mjs" "next-id.mjs"
+    # next-id.mjs — copy from docs/project-management/ (ISB pattern, 9 kinds, no fallback)
+    install_file "$SCRIPT_DIR/docs/project-management/next-id.mjs" "$PM_DIR/next-id.mjs" "next-id.mjs"
 
     # counters.json — only create if it doesn't already exist (never overwrite)
     if [ ! -f "$PM_DIR/counters.json" ]; then
-        cp "$SRC_SCRIPTS_DIR/counters.json" "$PM_DIR/counters.json"
+        cp "$SCRIPT_DIR/docs/project-management/counters.json" "$PM_DIR/counters.json"
         ok "Created: counters.json (initial values)"
-
-        # Update the prefix in next-id.mjs to use the project prefix
-        if [ -f "$PM_DIR/next-id.mjs" ]; then
-            sed -i "s/const ID_PREFIX = process.env.ID_PREFIX || \"psc\";/const ID_PREFIX = process.env.ID_PREFIX || \"$ID_PREFIX\";/" "$PM_DIR/next-id.mjs" 2>/dev/null || true
-        fi
     else
         info "counters.json already exists — keeping existing version (not overwritten)"
     fi
@@ -391,17 +369,18 @@ init_pm_dirs() {
     info "Initializing project management directories..."
 
     local pm_subdirs=(
-        "open"
-        "backlog"
-        "closed"
+        "tickets/open"
+        "tickets/active"
+        "tickets/closed"
+        "tickets/blocked"
         "epics"
+        "adhoc"
         "clarifications"
         "advisories"
-        "adr"
-        "designs"
-        "chores"
-        "reviews"
+        "decisions"
         "passports"
+        "logs/tickets"
+        "logs/conversations"
     )
 
     for subdir in "${pm_subdirs[@]}"; do
@@ -483,7 +462,6 @@ print_summary() {
 
     echo ""
     echo -e "  Project management directories: ${GREEN}docs/project-management/${NC}"
-    echo -e "  T1 check script:                ${GREEN}docs/pipeline/scripts/t1-check.sh${NC}"
     echo -e "  Next-ID script:                 ${GREEN}docs/project-management/next-id.mjs${NC}"
     echo ""
 
@@ -498,8 +476,7 @@ print_summary() {
     echo -e "  1. Customise AGENTS.md in your project root (tech stack, project details)"
     echo -e "  2. If merge prompts were generated: copy the LLM prompt above into your AI assistant"
     echo -e "  3. After merging: ${BOLD}rm -rf .opencode/merge/${NC}"
-    echo -e "  4. Run: ${BLUE}bash docs/pipeline/scripts/t1-check.sh${NC} to verify T1 checks"
-    echo -e "  5. Start using OpenCode with: ${BLUE}opencode${NC}"
+    echo -e "  4. Start using OpenCode with: ${BOLD}opencode${NC}"
     echo ""
 }
 
@@ -510,6 +487,63 @@ echo -e "${BOLD}╔════════════════════�
 echo -e "${BOLD}║          OpenCode Workflow System Installer                ║${NC}"
 echo -e "${BOLD}╚═════════════════════════════════════════════════════════════╝${NC}"
 echo ""
+
+if [ "$COMPARE_ONLY" = true ]; then
+    echo -e "${BOLD}═══ COMPARE MODE — dry-run, no files will be written ═══${NC}"
+    echo ""
+    echo -e "  Source: ${BLUE}$SCRIPT_DIR${NC}"
+    echo -e "  Target: ${BLUE}$TARGET_DIR${NC}"
+    echo ""
+    echo -e "  Legend:"
+    echo -e "  ${GREEN}[NEW]${NC}  — file doesn't exist in target, would be created"
+    echo -e "  ${GREEN}[UPD]${NC}  — source updated, target unchanged since last install, would overwrite"
+    echo -e "  ${YELLOW}[MOD]${NC}  — user modified target, would create merge prompt"
+    echo -e "  ${YELLOW}[FORCE]${NC} — would force-overwrite (with --force)"
+    echo -e "  ${BLUE}[SAME]${NC} — identical, no action needed"
+    echo -e "  ${RED}[MISS]${NC} — source file missing"
+    echo ""
+
+    echo -e "${BOLD}── Agents ──${NC}"
+    for agent_file in "$SRC_AGENTS_DIR"/*.md; do
+        [ -f "$agent_file" ] || continue
+        _name="$(basename "$agent_file")"
+        install_file "$agent_file" "$AGENTS_DIR/$_name" "agent: ${_name%.md}"
+    done
+
+    echo ""
+    echo -e "${BOLD}── Core Skills ──${NC}"
+    for skill_dir in "$SRC_CORE_SKILLS_DIR"/*/; do
+        [ -d "$skill_dir" ] || continue
+        _skill_name="$(basename "$skill_dir")"
+        _skill_file="$skill_dir/SKILL.md"
+        [ -f "$_skill_file" ] || continue
+        install_file "$_skill_file" "$CORE_SKILLS_DIR/$_skill_name/SKILL.md" "core skill: $_skill_name"
+    done
+
+    echo ""
+    echo -e "${BOLD}── Domain Skills ──${NC}"
+    for skill_dir in "$SRC_DOMAIN_SKILLS_DIR"/*/; do
+        [ -d "$skill_dir" ] || continue
+        _skill_name="$(basename "$skill_dir")"
+        _skill_file="$skill_dir/SKILL.md"
+        [ -f "$_skill_file" ] || continue
+        install_file "$_skill_file" "$DOMAIN_SKILLS_DIR/$_skill_name/SKILL.md" "domain skill: $_skill_name"
+    done
+
+    echo ""
+    echo -e "${BOLD}── Scripts ──${NC}"
+    install_file "$SCRIPT_DIR/docs/project-management/next-id.mjs" "$PM_DIR/next-id.mjs" "next-id.mjs"
+    if [ ! -f "$PM_DIR/counters.json" ]; then
+        echo -e "  ${GREEN}[NEW]${NC}  counters.json — would create"
+    else
+        echo -e "  ${BLUE}[SAME]${NC} counters.json — exists, never overwritten"
+    fi
+
+    echo ""
+    echo -e "${BOLD}═══ Compare complete. Run without --compare to install. ═══${NC}"
+    echo ""
+    exit 0
+fi
 
 info "Installing into: $TARGET_DIR"
 info "Workflow source:  $SCRIPT_DIR"
