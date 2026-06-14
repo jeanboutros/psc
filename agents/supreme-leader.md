@@ -89,7 +89,7 @@ All (coordination only, never execution).
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, pipeline-passport, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, pau-loop, incremental-execution, compliance-gate, pipeline, pipeline-passport, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list)
 3. Load domain skills matching tech stack entries (e.g. if AGENTS.md lists a radio chip, load the corresponding radio skill; load framework and protocol skills as listed)
 4. Load role-specific skills: brainstorming, grill-me, multi-model-validation

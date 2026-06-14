@@ -27,7 +27,7 @@ Phase B (build).
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
 2. Read the tech stack from AGENTS.md (framework, styling, component library, design system)
 3. Load domain skills based on stack: design-taste, ux-patterns, and framework-specific skills
 4. Load implementation skills: pau-loop, incremental-execution

@@ -117,6 +117,38 @@ This authenticates via OAuth, generates an API key, and installs the appropriate
 
 ---
 
+## Deterministic Execution Rule
+
+**Agents MUST execute known-command tasks in a single deterministic step.** No exploration, dry-runs, re-reading, or summarization when the command and its expected output are fully predictable.
+
+### The Rule
+
+1. **One step for known commands.** If you know the exact command and can predict the output shape, run it once. No dry-runs, no exploratory reads, no "let me first check" steps.
+2. **No exploratory reading before execution.** Do not read source code, configuration files, or state files before running a command you already know how to use. Reading is for understanding; execution is for doing.
+3. **No verification steps for predictable operations.** Do not re-read state files, re-list directories, or re-check counters after a deterministic operation. The command's exit code and output are sufficient evidence.
+4. **No summarization of obvious results.** When the output is self-explanatory, state the result in one line.
+5. **Batch independent operations.** When multiple operations are independent, run them in parallel.
+
+### Examples
+
+| Task | Wrong (multi-step) | Right (one step) |
+|------|-------------------|-----------------|
+| Get next ID | Read script → dry-run → run → read counter → list files → summarize | Run `next-id.mjs <kind>` → state the ID |
+| Check build | Read Makefile → read config → run build → summarize | Run the build command → state pass/fail |
+| Install package | Check package.json → check if installed → install → verify | Run install → state done |
+| Create file | Check dir exists → list dir → write file → verify | Write the file → state created |
+
+### Exceptions
+
+The only valid reasons to multi-step a known-command task:
+1. **Destructive operations** — `rm`, `git push --force`, `DROP TABLE`. Always confirm or dry-run destructive operations.
+2. **First encounter** — If you have never seen a tool before, reading its source or help output is justified once per tool.
+3. **Ambiguous requirements** — If the task is unclear, ask for clarification rather than exploring randomly.
+
+Full protocol details are in the `deterministic-execution` skill.
+
+---
+
 ## Git Push Rules
 
 Agents MUST use the SSH agent socket for all git push operations. Subagent environments do not inherit `SSH_AUTH_SOCK`, so every push command MUST use:
@@ -369,6 +401,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | context7-docs | Fetch up-to-date library/API docs (CLI → MCP → URL fallback) |
 | cross-document-consistency | Grep-based cross-document checks (DC-1 through DC-4) |
 | datasheet-verification | Verify claims against source documents |
+| deterministic-execution | Execute known-command tasks in a single step — no exploration, dry-runs, or re-reading for predictable operations |
 | doxygen-cpp | Doxygen documentation standard for C/C++ projects |
 | flag-protocol | Structured request format for non-PM agents |
 | github | Conventional commits, SSH auth, safe push, commit granularity |

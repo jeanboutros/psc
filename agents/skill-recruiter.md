@@ -32,7 +32,7 @@ All phases — called at every pipeline gate.
 ## Initialisation Protocol
 
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, pipeline-passport, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, pau-loop, incremental-execution, compliance-gate, pipeline, pipeline-passport, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Load role-specific skill: skill-recruiter
 3. Read the tech stack from AGENTS.md (build command, framework, target platform, component list — for gap detection context)
 4. Read the current skill registry from AGENTS.md to build the available-skills inventory

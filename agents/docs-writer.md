@@ -43,7 +43,7 @@ The Docs Writer is **language-agnostic**. When dispatched, you MUST load the app
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, cross-document-consistency
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, cross-document-consistency
 2. Read the tech stack from AGENTS.md (language, build command, framework, target platform)
 3. **Load the doc-standard skill** matching the project language (see table above)
 4. Load role-specific skills: software-engineering-principles (for module documentation format and C4 diagram standards)

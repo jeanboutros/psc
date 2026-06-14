@@ -38,7 +38,7 @@ You are invoked only by the Supreme Leader or PM via the `multi-model-validation
 ## Initialisation Protocol
 
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, review-confidence
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, review-confidence
 2. Read the dispatch envelope for the specific validation task
 3. Apply the validation protocol from the `multi-model-validation` skill
 

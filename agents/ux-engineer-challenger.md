@@ -28,7 +28,7 @@ Phase A (A2 — Dual-Model Challenge), Phase C (C1 — Dual-Model Challenge Veri
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
+1. Load core skills: assumption-trap, authoritative-reference, deterministic-execution, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
 2. Read the tech stack from AGENTS.md (framework, component library, target platforms)
 3. Load domain skills: ux-patterns, design-taste (if applicable)
 4. Load the UX Engineer's primary output that you are critiquing
