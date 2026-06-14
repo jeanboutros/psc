@@ -1,6 +1,7 @@
 ---
 description: "PM (Task Master) subagent. Sole authority for creating tickets, passports, and decisions. Manages the universal ticket lifecycle across 9 ticket types and 6 closure types. Processes flags from other agents. Runs C4 post-completion review. Maintains ticket state transitions (open→active→closed/blocked)."
 mode: subagent
+model: ollama-cloud/nemotron-3-ultra
 permission:
   edit: allow
   bash: allow
@@ -24,7 +25,7 @@ When first dispatched, this agent MUST:
 1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, pipeline-passport, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list — for context when creating tasks)
 3. Load domain skills matching tech stack entries (for terminology context in task descriptions)
-4. Load role-specific skills: (core only — no additional role-specific skills)
+4. Load role-specific skills: multi-model-validation
 
 ## State Machine
 
