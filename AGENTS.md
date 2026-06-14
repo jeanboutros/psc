@@ -25,7 +25,7 @@ These files are the workflow definition. Changes here MUST be considered for pro
 | `skills/core/pipeline/SKILL.md` | `.opencode/skills/pipeline/SKILL.md` | Pipeline state machine, enforcement protocol, routing table |
 | `skills/core/pipeline-passport/SKILL.md` | `.opencode/skills/pipeline-passport/SKILL.md` | Passport format and rules |
 | `skills/core/compliance-gate/SKILL.md` | `.opencode/skills/compliance-gate/SKILL.md` | Tiered compliance gate definitions |
-| **Pipeline rules in AGENTS.md** | AGENTS.md (relevant sections) | Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, Pipeline Enforcement Protocol |
+| **Pipeline rules in AGENTS.md** | AGENTS.md (relevant sections) | Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, Pipeline Enforcement Protocol, Diagram Standard, Pipeline Generality Principle |
 | `scripts/*` | `docs/project-management/` | next-id, counters |
 | `docs/project-management/next-id.mjs` | `docs/project-management/next-id.mjs` | Atomic ID generator (9 kinds) |
 | `docs/project-management/counters.json` | `docs/project-management/counters.json` | Counter state (must exist, never recreated) |
@@ -51,7 +51,7 @@ When changes are made to upstream artifacts in PSC, a request may be made to app
 
 1. **Propagate all pipeline rule changes** — changes to the Pipeline Enforcement Protocol, dispatch envelope format, passport rules, compliance gates, and agent permission blocks MUST be applied to downstream projects' counterparts.
 2. **Propagate agent/skill file changes** — if `agents/supreme-leader.md` or `agents/pm.md` changed, apply the same changes to the downstream `.opencode/agents/` copies. If a core skill changed, propagate it.
-3. **Propagate relevant AGENTS.md rules** — the Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, and Pipeline Enforcement rules in AGENTS.md propagate. PSC-only sections (Project Identity, Tech Stack, Skill Registry) do NOT propagate.
+3. **Propagate relevant AGENTS.md rules** — the Agent Permission Validation Rule, Documentation-Update Rule, Post-Change Verification Checklist, Pipeline Enforcement rules, Diagram Standard, and Pipeline Generality Principle in AGENTS.md propagate. PSC-only sections (Project Identity, Tech Stack, Skill Registry) do NOT propagate.
 4. **Do NOT overwrite project-specific customizations** — downstream projects may have customized their AGENTS.md with project principles, naming conventions, design document structures, etc. Only add or update the pipeline-related rules; never remove project-specific content.
 5. **Respect downstream directory structure** — if the downstream project nests files under `.opencode/` (as the install script does), use those paths. Do not assume top-level `agents/` or `skills/core/` directories.
 6. **Verify permission blocks after propagation** — after updating an agent file, run the Permission Validation Rule check to confirm the downstream agent's permissions still match its declared role.
@@ -216,14 +216,65 @@ If a change touches multiple docs, each doc update may be bundled with the trigg
 
 After every change, before considering the task complete, the agent MUST run this checklist:
 
-- [ ] **AGENTS.md** — Did I add or remove a skill? Update the Skill Registry. Did I create or change an agent? Run the Permission Validation Rule check.
+- [ ] **AGENTS.md** — Did I add or remove a skill? Update the Skill Registry. Did I create or change an agent? Run the Permission Validation Rule check. Did I add a pipeline rule? Check it against the Pipeline Generality Principle.
 - [ ] **docs/pipeline.md** — Did I change a gate, tier, dispatch rule, or enforcement protocol? Update this doc.
-- [ ] **skills/core/pipeline/SKILL.md** — Did I add or change an agent intent? Update the routing table. Did pipeline steps change? Update the passport template reference.
+- [ ] **skills/core/pipeline/SKILL.md** — Did I add or change an agent intent? Update the routing table. Did pipeline steps change? Update the passport template reference. Are diagrams in Mermaid? Check against the Diagram Standard.
 - [ ] **skills/core/pipeline-passport/SKILL.md** — Did I add or remove a pipeline step? Update the Required Steps template.
 - [ ] **README.md** — Did I create, delete, or rename a file? Update the Review & Test Status tables.
 - [ ] **Agent `permission:` block** — Did I create or change an agent? Validate `edit`/`bash` against the Permission Validation Rule. This is not optional — dispatch-only agents with `edit: allow` are a structural defect.
+- [ ] **Pipeline generality** — Did I add project-specific examples, commands, or domain references to pipeline artifacts? Remove them or move them to a domain skill. Pipeline rules must be generic.
 
 If a checklist item doesn't apply, mark it `N/A`. If you skip an item without justification, the change is incomplete.
+
+---
+
+## Diagram Standard
+
+Diagrams in pipeline skills, agent definitions, and documentation MUST use **Mermaid** syntax wherever possible. Mermaid diagrams are renderable in Markdown viewers, Git platforms, and documentation sites without external tooling.
+
+Rules:
+- **State machines, flowcharts, sequence diagrams** — use Mermaid. Do not use ASCII art when a Mermaid diagram can express the same information.
+- **Tables and structured data** — remain as Markdown tables. Mermaid is for relational and sequential information, not tabular data.
+- **Existing ASCII diagrams** — when modifying a file that already contains an ASCII state machine or flowchart, convert it to Mermaid in the same edit. Do not leave a mix of ASCII and Mermaid in the same file.
+- **Embedding** — use fenced code blocks with the `mermaid` language tag:
+
+````
+```mermaid
+stateDiagram-v2
+    [*] --> A0
+    A0 --> A1
+    A1 --> A2
+```
+````
+
+- **Complexity** — if a diagram has more than 15 nodes, consider splitting it into sub-diagrams (one per phase) rather than producing an unreadable monolith.
+
+---
+
+## Pipeline Generality Principle
+
+**PSC is an upstream workflow engine used by multiple projects. Pipeline definitions, compliance gates, agent role descriptions, and RCAs MUST remain generic and project-agnostic.**
+
+### Rules
+
+1. **No project-specific technical details in pipeline artifacts.** The pipeline, compliance gates, passport format, dispatch envelopes, and agent role definitions must not reference any specific project's code, framework, hardware, or domain. Example violations:
+   - Referencing `init()` as a canonical silent-failure example in the pipeline skill — the example is project-specific.
+   - Hardcoding `idf.py build` as a T1 build check — the build command belongs in the downstream project's AGENTS.md, not in the upstream pipeline.
+   - Naming a specific register or protocol in a compliance gate — domain-specific checks belong in domain skills.
+
+2. **Project-specific details belong in two places only:**
+   - **Downstream project AGENTS.md** — tech stack, build commands, domain-specific traps, naming conventions.
+   - **Domain skills** — skills scoped to a specific technology (e.g. `esp-idf`, `ble-protocol`, `tdd-cpp`) may contain language- or framework-specific rules. These are optional and only loaded when a task touches that domain.
+
+3. **When writing RCAs, ACRs, or change requests** that affect the general pipeline:
+   - Frame the problem and solution in abstract terms. Instead of "init() is never called," write "a function silently fails when its precondition is not met."
+   - Instead of "the ESP32 build fails," write "the build command for the target platform fails."
+   - Instead of "nRF24L01+ register CONFIG at bit 0," write "a hardware register bit position."
+   - Concrete examples may be provided in parenthetical notes, but the rule itself must be generic.
+
+4. **The only exception** is when a skill is explicitly scoped to a language or framework (e.g. `doxygen-cpp`, `tdd-cpp`, `esp-idf`). These skills are domain-specific by design and are not part of the generic pipeline — they are only loaded when a task touches that domain.
+
+5. **When propagating changes downstream**, strip any PSC-specific examples before applying. Downstream projects should see generic pipeline rules, not PSC's internal examples.
 
 ---
 
