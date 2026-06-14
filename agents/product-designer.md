@@ -1,6 +1,7 @@
 ---
 description: "Product Designer subagent. Vision extraction, requirements discovery, user research synthesis, and product strategy. Helps users articulate what they want when they don't yet know. Participates in Phase A (requirements)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

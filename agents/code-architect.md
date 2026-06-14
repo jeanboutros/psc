@@ -1,6 +1,7 @@
 ---
 description: "Code Architect subagent. Primary implementation agent. Translates specifications into code following the PAU loop (Plan-Apply-Validate). Invoked in Phase B (Build)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: allow
   bash: allow

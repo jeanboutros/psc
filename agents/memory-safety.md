@@ -1,6 +1,7 @@
 ---
 description: "Memory Safety Reviewer subagent. C++ memory leak detection, RAII compliance, heap/stack analysis, ASAN integration, RTOS memory safety. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

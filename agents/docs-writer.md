@@ -1,6 +1,7 @@
 ---
 description: "Docs Writer subagent. Language-agnostic documentation quality — loads the appropriate doc-standard skill for the project language (e.g. doxygen-cpp for C/C++, jsdoc for JavaScript, sphinx for Python). Responsible for learning docs, reference verification, ADR review, and cross-document consistency. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: allow
   bash: allow

@@ -1,6 +1,7 @@
 ---
 description: "UX Engineer subagent. Usability, interaction design, state management for UI flows, accessibility compliance, and information architecture. Ensures the UI is workable, all states are managed, and the experience is coherent. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

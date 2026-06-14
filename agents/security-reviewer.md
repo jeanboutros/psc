@@ -1,6 +1,7 @@
 ---
 description: "Security Reviewer subagent. Embedded firmware security analysis — buffer safety, stack depth, DMA bounds, secrets handling, input validation. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

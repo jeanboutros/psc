@@ -1,6 +1,7 @@
 ---
 description: "Hardware Engineer subagent. Validates register models, bit layouts, timing constraints, and datasheet fidelity. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

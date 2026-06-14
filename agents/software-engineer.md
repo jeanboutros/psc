@@ -1,6 +1,7 @@
 ---
 description: "Software Engineer subagent. Architecture design, API design, component boundaries, HAL interfaces. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

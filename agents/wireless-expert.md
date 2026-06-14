@@ -1,6 +1,7 @@
 ---
 description: "Wireless Expert subagent. RF protocol compliance, wireless spec conformance, frequency/channel mapping, modulation, data encoding. Participates in Phase A (requirements) and Phase C (verification)."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow

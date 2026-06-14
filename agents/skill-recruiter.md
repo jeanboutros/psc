@@ -1,6 +1,7 @@
 ---
 description: "Skill Recruiter subagent. Online search for agent skills and agent definitions. Safety-scans imported files for prompt injection, secrets, supply-chain, excessive agency, and permission escalation. Detects skill gaps in agent outputs. Synthesises recurring conversation patterns into new skills. Flags gaps — never auto-imports. Called at every pipeline gate."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: allow
   bash: allow

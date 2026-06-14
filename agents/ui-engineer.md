@@ -1,6 +1,7 @@
 ---
 description: "UI Engineer subagent. Frontend implementation specialist — builds production-grade interfaces using the project's specified framework and design system. Participates in Phase B (build) as the implementation agent for UI work."
 mode: subagent
+model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: allow
   bash: allow
