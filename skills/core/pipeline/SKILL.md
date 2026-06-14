@@ -66,7 +66,7 @@ The Supreme Leader MUST document the specialist roster in the passport's Require
 |------|------|-------------|-----|
 | A0 | Task Definition | Produce detailed task specification: acceptance criteria, files, constraints, test strategy, doc plan. **Classify task domain** to determine specialist roster. | All agents collaborate |
 | A1 | Parallel Specialist Review | All applicable specialists review the proposal independently, per the task-driven specialist roster | Specialist roster per Task Domain Classification |
-| A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques | Supreme Leader orchestrates |
+| A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques. Primary specialist uses their default model; challenger uses `ollama-cloud/glm-5.1` via the corresponding `*-challenger` agent. | Supreme Leader orchestrates |
 | A2a | ADR Creation | Every resolved design decision from A2 MUST have an ADR file created at `docs/adr/<adr-id>.md`. Use `node docs/project-management/next-id.mjs adr` to get the next ADR sequence number. | SW Engineer (writes), Docs Writer (reviews) |
 | A3 | A-GATE | T3 + T-ARCH compliance check + skill coverage check | All dispatched specialists (T3), SW Engineer (T-ARCH), Skill Recruiter (skill gap) |
 
@@ -141,7 +141,7 @@ What becomes easier, harder, or blocked by this decision.
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
 | C0 | T1 Re-run | Mechanical compliance re-check on final codebase | Code Architect |
-| C1 | Dual-Model Challenge (Verification) | Primary verifier + challenger verifier | Supreme Leader orchestrates |
+| C1 | Dual-Model Challenge (Verification) | Primary verifier + challenger verifier. Primary uses their default model; challenger uses `ollama-cloud/glm-5.1` via the corresponding `*-challenger` agent. | Supreme Leader orchestrates |
 | C2 | Parallel Specialist Approval | All dispatched specialists review independently | All dispatched specialists |
 | C3 | C-GATE | T1 re-run + T3 + T-ARCH + specialist finding skill check | Code Architect (T1), Dispatched specialists (T3), SW Engineer (T-ARCH), Skill Recruiter (skill gap) |
 | C4 | PM Completion Review | Review all verdicts, synthesis, gate results, gap reports, correction records. Decide: CLOSE / CLOSE+NEW / BLOCK / RE-DISPATCH / CANCEL / ARCHIVE. Move ticket to appropriate status directory. | PM |
@@ -157,7 +157,7 @@ What becomes easier, harder, or blocked by this decision.
 
 | Step | Name | Description | Who |
 |------|------|-------------|-----|
-| CR1 | Code Review Round | Reviewer produces a structured code review per the Code Review Format below. Review covers: summary, detailed assessment, findings with confidence scores, changes still pending, and verdict. | Dispatched reviewer(s) |
+| CR1 | Code Review Round | Reviewer produces a structured code review per the Code Review Format below. Review covers: summary, detailed assessment, findings with confidence scores, changes still pending, and verdict. | `@code-reviewer` (powered by minimax-m3) |
 | CR2 | CR-GATE | All blocking findings (confidence ≥80) resolved. No open changes still pending. Reviewer verdict is APPROVED. | Supreme Leader orchestrates |
 | CR3 | Review Acceptance | Author confirms all review feedback is addressed. If CR-GATE fails, loop back to CR1 for another round. | Code Architect (author) |
 
@@ -570,7 +570,7 @@ Which agent handles which intent:
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
 | C4 post-completion review | PM | pipeline, pipeline-passport, flag-protocol |
-| Code review (CR1) | Software Engineer (or dispatched reviewer) | compliance-gate, review-confidence, self-audit-checklist |
+| Code review (CR1) | Code Reviewer | compliance-gate, review-confidence, self-audit-checklist, software-engineering-principles |
 | CR-GATE orchestration | Supreme Leader | pipeline, compliance-gate, pipeline-passport |
 | Review acceptance (CR3) | Code Architect (author) | compliance-gate, verification-before-completion |
 | Debugging | Code Architect | systematic-debugging, domain |
@@ -589,18 +589,44 @@ Used in **Phase A** (architecture) and **Phase C** (verification).
 
 ### How It Works
 
-1. **Primary pass** — First model produces the output (architecture proposal or verification).
-2. **Challenger pass** — Second model independently reviews, looking for:
-   - Contradictions with datasheet/spec
-   - Missed edge cases
-   - Unsupported assumptions
-   - Security gaps
-   - Protocol non-compliance
-   - T-ARCH violations (logical errors, structural issues, principle misalignment)
+1. **Primary pass** — First model produces the output (architecture proposal or verification). Each specialist uses their default model (see agent file for `model:` field).
+2. **Challenger pass** — Second model independently reviews, using a different model. The challenger agent for each specialist uses `ollama-cloud/glm-5.1`. See the Challenger Agent Table below for mappings.
 3. **Synthesis** — Supreme Leader merges findings:
-   - Agreements → accepted
-   - Contradictions → presented to user for decision
-   - One-sided findings → accepted if well-evidenced, otherwise flagged
+    - Agreements → accepted
+    - Contradictions → presented to user for decision
+    - One-sided findings → accepted if well-evidenced, otherwise flagged
+
+### Challenger Agent Table
+
+Each specialist has a corresponding challenger agent that provides the Dual-Model Challenge perspective:
+
+| Primary Agent | Challenger Agent | Challenger Model |
+|---------------|------------------|------------------|
+| `@code-architect` | `@code-architect-challenger` | `ollama-cloud/glm-5.1` |
+| `@software-engineer` | `@software-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@test-engineer` | `@test-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@docs-writer` | `@docs-writer-challenger` | `ollama-cloud/glm-5.1` |
+| `@hardware-engineer` | `@hardware-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@memory-safety` | `@memory-safety-challenger` | `ollama-cloud/glm-5.1` |
+| `@security-reviewer` | `@security-reviewer-challenger` | `ollama-cloud/glm-5.1` |
+| `@wireless-expert` | `@wireless-expert-challenger` | `ollama-cloud/glm-5.1` |
+| `@product-designer` | `@product-designer-challenger` | `ollama-cloud/glm-5.1` |
+| `@ux-engineer` | `@ux-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@ui-engineer` | `@ui-engineer-challenger` | `ollama-cloud/glm-5.1` |
+
+### Multi-Model Validation
+
+In addition to the specialist-specific Dual-Model Challenge, the Supreme Leader and PM can invoke the `multi-model-validation` skill to launch parallel generic agents for cross-validation, fact-checking, and requirement refinement. This uses the `general-*` agents:
+
+| Priority | Agent | Model |
+|----------|-------|-------|
+| 1 | `@general-kimi` | `ollama-cloud/kimi-k2.7-code` |
+| 2 | `@general-nemotron` | `ollama-cloud/nemotron-3-ultra` |
+| 3 | `@general-minimax` | `ollama-cloud/minimax-m3` |
+| 4 | `@general-glm` | `ollama-cloud/glm-5.1` |
+| 5 | `@general-deepseek` | `ollama-cloud/deepseek-v4-pro` |
+
+Complexity tiers: Low (2 models), Medium (3), High (4), Critical (all 5). See `skills/core/multi-model-validation/SKILL.md` for the full protocol.
 
 ### When to Invoke Dual-Model Challenge
 
