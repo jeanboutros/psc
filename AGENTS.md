@@ -97,6 +97,26 @@ This authenticates via OAuth, generates an API key, and installs the appropriate
 
 ---
 
+## Git Push Rules
+
+Agents MUST use the SSH agent socket for all git push operations. Subagent environments do not inherit `SSH_AUTH_SOCK`, so every push command MUST use:
+
+```bash
+SSH_AUTH_SOCK=~/.ssh/agent.sock git push origin main
+```
+
+**Pre-flight check (mandatory before every push):**
+
+```bash
+SSH_AUTH_SOCK=~/.ssh/agent.sock ssh -T git@github.com 2>&1 | grep -q "successfully authenticated" || { echo "SSH check failed"; exit 1; }
+```
+
+**If SSH check fails**, do NOT attempt `git push` without the socket. Do NOT switch the remote to HTTPS. Follow the resolution protocol in `skills/core/github/SKILL.md`.
+
+**Force-push is FORBIDDEN.** If the branch has diverged, use `git pull --rebase origin main` then retry the push with the SSH agent socket.
+
+---
+
 ## Commit Rules
 
 ### Conventional Commits v1.0.0 (Mandatory)
@@ -334,6 +354,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | grill-me | Adversarial design review |
 | incremental-execution | Unit-by-unit implementation |
 | memory-safety | Memory safety review (C/C++ projects) |
+| multi-model-validation | Launch parallel generic agents (2+ models) for cross-validation, fact-checking, requirement refinement |
 | pau-loop | Plan → Apply → Validate loop |
 | pipeline | Full pipeline state machine |
 | pipeline-passport | Task tracking card |
