@@ -167,16 +167,28 @@ Gates are mandatory checkpoints at phase transitions. Work cannot proceed past a
 | Fail | Tier-specific routing, independent retry counters |
 | Retry budget | 3 loops per tier (independent) |
 
-### C-GATE (Enters Commit)
+### C-GATE (Enters Phase CR)
 
 | Property | Value |
 |----------|-------|
-| Location | After Phase C specialist review, before git commit |
+| Location | After Phase C specialist review, before Phase CR |
 | Tiers | T1 re-run + T3 + T-ARCH |
 | Who runs | Code Architect (T1), All dispatched specialists (T3), Software Engineer (T-ARCH) |
 | Pass | T1 passes AND all dispatched APPROVED AND T-ARCH passes |
 | Fail | Tier-specific routing, independent retry counters |
 | Retry budget | 3 loops per tier (independent) |
+
+### CR-GATE (Exits Phase CR — Code Review)
+
+| Property | Value |
+|----------|-------|
+| Location | After code review round(s), before commit |
+| Tiers | Review findings (using review-confidence scoring) |
+| Who runs | Dispatched reviewer(s) for review; Supreme Leader orchestrates |
+| Pass | No blocking findings (confidence ≥80) unresolved. Changes Still Pending list is empty. Reviewer verdict is APPROVED. |
+| Fail | Any blocking finding unresolved, or Changes Still Pending list non-empty, or reviewer verdict is REJECTED |
+| Retry budget | 5 review rounds maximum. After 5 rounds with unresolved blocking findings, escalate to user. |
+| Fail routing | CONDITIONAL PASS with rework → CR1 next round. REJECTED with code changes needed → B2 (fix code), then re-enter Phase C and CR. |
 
 ### T-ARCH on Every Agent Output
 
@@ -245,6 +257,7 @@ After 3 loops at the same tier → **ESCALATE to user** with:
 | B-UNIT-GATE | T1 + T-ARCH | 3×T1, 3×T-ARCH | 3 loops at any tier |
 | B-FINAL-GATE | T1 + T2 + T-ARCH | 3×T1, 3×T2, 3×T-ARCH | 3 loops at any tier |
 | C-GATE | T1 + T3 + T-ARCH | 3×T1, 3×T3, 3×T-ARCH | 3 loops at any tier |
+| CR-GATE | Review findings (confidence scoring) | 5 review rounds | 5 rounds with unresolved blocking findings |
 
 ---
 

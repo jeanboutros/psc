@@ -134,7 +134,7 @@ What becomes easier, harder, or blocked by this decision.
 
 ### Phase C — Multi-Agent Verify
 
-**Goal:** Final check before commit. ALL dispatched specialists must approve.
+**Goal:** Final check before code review. ALL dispatched specialists must approve.
 
 **Sub-steps:**
 
@@ -147,7 +147,108 @@ What becomes easier, harder, or blocked by this decision.
 | C4 | PM Completion Review | Review all verdicts, synthesis, gate results, gap reports, correction records. Decide: CLOSE / CLOSE+NEW / BLOCK / RE-DISPATCH / CANCEL / ARCHIVE. Move ticket to appropriate status directory. | PM |
 
 **C-GATE pass criteria:** T1 passes + all dispatched specialists APPROVED + T-ARCH passes + Skill Recruiter confirms no uncovered skill gaps from specialist findings → proceed to C4.
-**C4 pass criteria:** PM issues CLOSE or CLOSE+NEW → proceed to COMMIT. PM issues BLOCK → ticket moves to `blocked/`, pipeline paused. PM issues RE-DISPATCH → ticket moves to `open/`, new dispatch cycle. PM issues CANCEL → ticket moves to `closed/` (cancelled), replacement + delta analysis tickets created. PM issues ARCHIVE → ticket moves to `closed/` (archived).
+**C4 pass criteria:** PM issues CLOSE or CLOSE+NEW → proceed to CR phase. PM issues BLOCK → ticket moves to `blocked/`, pipeline paused. PM issues RE-DISPATCH → ticket moves to `open/`, new dispatch cycle. PM issues CANCEL → ticket moves to `closed/` (cancelled), replacement + delta analysis tickets created. PM issues ARCHIVE → ticket moves to `closed/` (archived).
+
+### Phase CR — Code Review
+
+**Goal:** Structured, multi-round code review of the completed implementation before commit. Each code review round produces a formal review record with detailed findings. Multiple rounds may occur until all blocking findings are resolved.
+
+**Sub-steps:**
+
+| Step | Name | Description | Who |
+|------|------|-------------|-----|
+| CR1 | Code Review Round | Reviewer produces a structured code review per the Code Review Format below. Review covers: summary, detailed assessment, findings with confidence scores, changes still pending, and verdict. | Dispatched reviewer(s) |
+| CR2 | CR-GATE | All blocking findings (confidence ≥80) resolved. No open changes still pending. Reviewer verdict is APPROVED. | Supreme Leader orchestrates |
+| CR3 | Review Acceptance | Author confirms all review feedback is addressed. If CR-GATE fails, loop back to CR1 for another round. | Code Architect (author) |
+
+**CR-GATE pass criteria:** All blocking findings (confidence ≥80) from all review rounds are resolved. The "Changes Still Pending" list is empty. The reviewer's verdict is APPROVED.
+**CR-GATE fail:** Any blocking finding unresolved, or changes still pending, or reviewer verdict is REJECTED → loop back to Phase B (B2) to address findings, then re-enter Phase C and CR.
+
+#### Code Review Format
+
+Every code review round MUST produce a review record in this format. The review record is appended to the passport's `## Code Reviews` section and written to the log directory as `CR1-review-round-<N>.md`.
+
+```markdown
+## Code Review Round <N> — <ticket-id>
+
+### Review Metadata
+
+| Field | Value |
+|-------|-------|
+| Reviewer | <agent role> |
+| Date | <YYYY-MM-DD> |
+| Phase | CR |
+| Round | <N> |
+| Files reviewed | <list of files> |
+| Lines reviewed | <range or "full"> |
+
+### Summary
+
+<1-3 sentence overview of the changes and their quality. What was implemented? Is it correct? Any immediate concerns?>
+
+### Detailed Assessment
+
+<Structured analysis organized by concern area:>
+
+#### Correctness
+- <Are the changes logically correct? Do they solve the stated problem?>
+- <Are edge cases handled? Error paths covered?>
+
+#### Design & Architecture
+- <Do the changes follow project architecture (HAL, typed vocabulary, module boundaries)?>
+- <Are new public APIs minimally restrictive? Typed where appropriate?>
+
+#### Code Quality
+- <Is the code readable? Well-structured?>
+- <Are there code smells, duplication, or unnecessary complexity?>
+
+#### Testing
+- <Are there sufficient tests for the changes?>
+- <Are edge cases tested? Error paths tested?>
+
+#### Documentation
+- <Are public symbols documented?>
+- <Are design decisions captured in ADRs?>
+
+#### Security & Safety
+- <Are there buffer safety concerns?>
+- <Are external inputs validated?>
+- <Are secrets handled correctly?>
+
+### Findings
+
+| ID | Confidence | Severity | File:Line | Description | Suggested Fix | Status |
+|----|-----------|----------|-----------|-------------|---------------|--------|
+| CR<N>-F1 | <score> | Critical/High/Moderate/Low | <file:line> | <description> | <fix> | Open/Resolved |
+| CR<N>-F2 | <score> | ... | ... | ... | ... | ... |
+
+### Changes Still Pending
+
+List of changes that must be made before this review can pass. This list MUST be empty for CR-GATE to pass.
+
+| # | Finding Ref | Description | Assigned To | Status |
+|---|------------|-------------|-------------|--------|
+| 1 | CR<N>-F1 | <what still needs to change> | <who> | Open/In Progress/Resolved |
+
+### Verdict
+
+[APPROVED / CONDITIONAL PASS / REJECTED]
+
+**Rationale:** <Why this verdict, referencing blocking findings if any>
+**Blocking findings:** <list of findings with confidence ≥80, or "None">
+**Advisory findings:** <list of findings with confidence <80, or "None">
+```
+
+#### Code Review Rules
+
+1. **Every ticket MUST go through at least one code review round.** No exceptions. Even trivial changes get at least one review.
+2. **Multiple rounds are expected.** If the reviewer issues REJECTED or CONDITIONAL PASS with blocking findings, the author addresses the findings and a new round begins.
+3. **The "Changes Still Pending" list MUST be empty for CR-GATE to pass.** This is a hard gate — no review can pass with open changes.
+4. **Findings use the review-confidence scoring system.** Every finding gets a confidence score (0-100). Findings ≥80 block.
+5. **Code reviews are in addition to, not instead of, Phase C specialist reviews.** Phase C validates correctness against requirements and specs. Code review validates implementation quality, readability, and completeness.
+6. **Review records are permanent.** They are appended to the passport and must not be deleted or edited after stamping.
+7. **Loop back to Phase B if CR-GATE fails with code changes needed.** The author returns to B2 to implement fixes, then re-enters Phase C and CR.
+8. **Maximum 5 review rounds per ticket.** After 5 rounds with unresolved blocking findings, escalate to the user.
 
 ---
 
@@ -156,79 +257,107 @@ What becomes easier, harder, or blocked by this decision.
 ### Complete State Transition Diagram
 
 ```
-                                    ┌───────────────────────────────────────────────┐
-                                    │                                               │
-                                    ▼                                               │
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐│
-│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY ││
-│  Def     │    │Parallel │    │Challenge│    │Create   │    │T3+T-ARCH│    │         │    │ (unit)  ││
-└─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘│
-                                                                  │                              │     │
-                                                                  │ FAIL (3× T3 or T-ARCH)        │     │
-                                                                  │ ┌───────────────────────────┘  │     │
-                                                                  │ │  PASS                         │     │
-                                                                  ▼ ▼                              ▼     │
-                                                            ┌──────────┐                    ┌──────────┐ │
-                                                            │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │ │
-                                                            │(loop back│                   │GATE      │ │
-                                                            │ with cri-│                   │T1+T-ARCH │ │
-                                                            │ tique)    │                   └────┬─────┘ │
-                                                            └──────────┘                        │       │
-                                                                                                 │       │
-                                                                      PASS ────────────────────┘       │
-                                                                                           │
-                                                                                   ┌───────▼──────┐
-                                                                                   │More units?   │
-                                                                                   └──┬────────┬─┘
-                                                                                      │YES     │NO
-                                                                                      │        │
-                                                                                      │        ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │B3a:FINAL │
-                                                                                      │  │GATE      │
-                                                                                      │  │T1+T2+ARCH│
-                                                                                      │  └────┬─────┘
-                                                                                      │       │
-                                                                                      │  FAIL (3× any tier)
-                                                                                      │  ┌─────│─────┐
-                                                                                      │  │ LOOP BACK │
-                                                                                      │  └─────│─────┘
-                                                                                      │       │ PASS
-                                                                                      │       ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │C0:T1 re-  │
-                                                                                      │  │run        │
-                                                                                      │  └────┬─────┘
-                                                                                      │       │
-                                                                                      │       ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │C1:Dual   │
-                                                                                      │  │Challenge │
-                                                                                      │  │(Verify)  │
-                                                                                      │  └────┬─────┘
-                                                                                      │       │
-                                                                                      │       ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │C2:Special-│
-                                                                                      │  │ist Appro-│
-                                                                                      │  │val (T3)  │
-                                                                                      │  └────┬─────┘
-                                                                                      │       │
-                                                                                      │       ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │C3:C-GATE │
-                                                                                      │  │T1+T3+ARCH│
-                                                                                      │  └────┬─────┘
-                                                                                      │       │
-                                                                                      │  FAIL (3× any tier)
-                                                                                      │  ┌─────│─────┐
-                                                                                      │  │ LOOP BACK│
-                                                                                      │  └─────│─────┘
-                                                                                      │       │ PASS
-                                                                                      │       ▼
-                                                                                      │  ┌──────────┐
-                                                                                      │  │ COMMIT   │
-                                                                                      │  └──────────┘
+                                     ┌───────────────────────────────────────────────┐
+                                     │                                               │
+                                     ▼                                               │
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY │
+│  Def     │    │Parallel │    │Challenge│    │Create   │    │T3+T-ARCH│    │         │    │ (unit)  │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘
+                                                                   │                              │
+                                                                   │ FAIL (3× T3 or T-ARCH)        │
+                                                                   │ ┌───────────────────────────┘  │
+                                                                   │ │  PASS                         │
+                                                                   ▼ ▼                              ▼
+                                                             ┌──────────┐                    ┌──────────┐
+                                                             │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │
+                                                             │(loop back│                   │GATE      │
+                                                             │ with cri-│                   │T1+T-ARCH │
+                                                             │ tique)    │                   └────┬─────┘
+                                                             └──────────┘                        │       │
+                                                                                                  │       │
+                                                                       PASS ────────────────────┘       │
+                                                                                            │
+                                                                                    ┌───────▼──────┐
+                                                                                    │More units?   │
+                                                                                    └──┬────────┬─┘
+                                                                                       │YES     │NO
+                                                                                       │        │
+                                                                                       │        ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │B3a:FINAL │
+                                                                                       │  │GATE      │
+                                                                                       │  │T1+T2+ARCH│
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │  FAIL (3× any tier)
+                                                                                       │  ┌─────│─────┐
+                                                                                       │  │ LOOP BACK │
+                                                                                       │  └─────│─────┘
+                                                                                       │       │ PASS
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │C0:T1 re-  │
+                                                                                       │  │run        │
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │C1:Dual   │
+                                                                                       │  │Challenge │
+                                                                                       │  │(Verify)  │
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │C2:Special-│
+                                                                                       │  │ist Appro-│
+                                                                                       │  │val (T3)  │
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │C3:C-GATE │
+                                                                                       │  │T1+T3+ARCH │
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │  FAIL (3× any tier)
+                                                                                       │  ┌─────│─────┐
+                                                                                       │  │ LOOP BACK│
+                                                                                       │  └─────│─────┘
+                                                                                       │       │ PASS
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │C4:PM     │
+                                                                                       │  │Review    │
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐◀──┐
+                                                                                       │  │CR1:Code  │   │
+                                                                                       │  │Review    │   │ next round
+                                                                                       │  └────┬─────┘   │
+                                                                                       │       │         │
+                                                                                       │       ▼         │
+                                                                                       │  ┌──────────┐   │
+                                                                                       │  │CR2:CR-   │   │
+                                                                                       │  │GATE      │───┘ (if CONDITIONAL PASS
+                                                                                       │  └────┬─────┘    with rework needed)
+                                                                                       │       │
+                                                                                       │  FAIL  │ PASS
+                                                                                       │  (blocking ──→ B2 (fix code), then re-enter C and CR)
+                                                                                       │  findings)
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │CR3:Review│
+                                                                                       │  │Acceptance│
+                                                                                       │  └────┬─────┘
+                                                                                       │       │
+                                                                                       │       ▼
+                                                                                       │  ┌──────────┐
+                                                                                       │  │ COMMIT   │
+                                                                                       │  └──────────┘
 ```
 
 ### State Transition Table
@@ -253,15 +382,71 @@ What becomes easier, harder, or blocked by this decision.
 | C1 | Challenge complete | C2 | Synthesis produced |
 | C2 | Reviews complete | C3 | All dispatched specialists reviewed |
 | C3 | C-GATE passes | C4 | All dispatched APPROVED + T1 pass + T-ARCH pass + skill coverage confirmed |
-| C4 | PM issues CLOSE or CLOSE+NEW | COMMIT | PM reviews all verdicts, synthesis, corrections; decides to close |
+| C4 | PM issues CLOSE or CLOSE+NEW | CR1 | PM reviews all verdicts, synthesis, corrections; decides to close |
 | C4 | PM issues BLOCK | BLOCKED | Ticket moves to `blocked/`, clarification ticket created, pipeline paused |
 | C4 | PM issues RE-DISPATCH | A0 (new cycle) | Ticket moves to `open/` with rework notes, or new ticket created |
 | C4 | PM issues CANCEL | CLOSED (cancelled) | Ticket moves to `closed/`, replacement + delta analysis tickets created |
 | C4 | PM issues ARCHIVE | CLOSED (archived) | Ticket moves to `closed/`, no replacement |
 | C3 | C-GATE fails | C0 or C2 or B2 | T1 fail → C0 (Code Architect fixes, re-run T1); T3 fail → C2 (specialist re-review); T-ARCH fail → Software Engineer (architectural fix) |
+| CR1 | Code review round complete | CR2 | Review record produced with findings and verdict |
+| CR2 | CR-GATE passes | CR3 | No blocking findings (≥80), Changes Still Pending empty, verdict APPROVED |
+| CR2 | CR-GATE fails (CONDITIONAL PASS with rework) | CR1 (next round) | Blocking findings require rework but no code changes needed beyond review scope |
+| CR2 | CR-GATE fails (REJECTED with code changes needed) | B2 (fix code) | Blocking findings require code changes; re-enter Phase C after fixes, then CR |
+| CR3 | Author confirms all review feedback addressed | COMMIT | All review rounds complete, all findings resolved |
+| CR3 | Author identifies unresolved findings | B2 (fix code) | Loop back to implement remaining fixes, then re-enter Phase C and CR |
+| CR | 5 review rounds exhausted with unresolved blocking findings | ESCALATE | Supreme Leader presents full review history to user |
 | Any | 3 retries exhausted at any tier | ESCALATE | Supreme Leader presents full violation report to user |
 
 > **All FAIL transitions require a Correction Record before retry.** For every row above where the event is a gate or check failure, the producing agent MUST complete the `post-rejection-correction` protocol and stamp a Correction Record in the passport before the Supreme Leader dispatches the retry. The Supreme Leader must verify the Correction Record is present; if it is missing, block the dispatch and route to the producing agent first.
+
+---
+
+## No-Hotfix-Bypass Rule
+
+The pipeline has **no bypass, no shortcut, no fast-track**. Every change — regardless of urgency, size, or type — must go through the full pipeline: Phase A → Phase B → Phase C with gates, stamps, and specialist reviews.
+
+### What This Means
+
+| Claim | Reality |
+|-------|---------|
+| "It's just a quick fix" | It's a bugfix ticket. Dispatch to PM for passport creation, then Phase A. |
+| "It's a one-line change" | One line still needs review, testing, and gate approval. Phase A → B → C. |
+| "It's urgent / production down" | Urgency does not exempt quality. Create a `bugfix` ticket and run the pipeline. |
+| "The user reported a runtime bug" | Runtime bugs are `bugfix` tickets. The pipeline catches silent failures, missing error handling, and root causes that a "quick fix" misses. |
+| "I can just dispatch to code-architect directly" | No. The Supreme Leader MUST NOT dispatch directly to any producing agent for a code change. PM creates the ticket and passport first. |
+| "Skipping Phase A is fine, we know what to build" | No. Phase A catches assumptions, gathers requirements, and classifies domain scope. Skipping it is how silent failures escape. |
+
+### Why This Rule Exists
+
+A runtime bug caused by a function that silently fails when its precondition is not met is the canonical example: a "quick fix" approach (dispatch a code agent to patch the caller) addresses the symptom but not the root cause. The pipeline exists precisely to catch:
+- **RC-1 (Unverified Assumption):** Assuming a precondition is always satisfied without verifying.
+- **RC-2 (Missing Question Category):** Not asking about initialization order or error handling during requirements.
+- **RC-3 (Unknown Fault Pattern):** Not recognizing silent failure as a fault pattern.
+- **RC-5 (Wrong Review Scope):** Reviewing only the patched function, not the broader contract.
+
+The pipeline's gates and specialist reviews exist to catch these. Bypassing the pipeline bypasses all of them.
+
+### Enforcement
+
+If the Supreme Leader detects that it is about to bypass the pipeline (e.g., dispatching directly to a producing agent without a passport, skipping Phase A, or treating a bug report as a "quick fix"), it MUST:
+
+1. **STOP** — do not dispatch.
+2. **Classify the ticket type** (feature, bugfix, adhoc, etc.).
+3. **Dispatch to `@pm`** with `trigger: "create-passport"` and the correct `ticket_type`.
+4. **Wait** for the PM to return the ticket file and passport.
+5. **Only then** proceed with pipeline routing.
+
+### Mistake Ticket Type
+
+When a pipeline violation is discovered after the fact (e.g., the Supreme Leader dispatched code-architect directly), the corrective action is:
+
+1. **Halt** the current work immediately.
+2. **Create a `mistake` ticket** via PM: `ticket_type: "mistake"`.
+3. **Document the violation** in the mistake ticket: what was bypassed, why it happened, and the root cause.
+4. **Run the `post-rejection-correction` protocol** — classify the violation (typically RC-1: Unverified Assumption that the change was "simple enough" to bypass, or RC-2: Missing Question Category about whether pipeline shortcuts are ever acceptable).
+5. **Start the actual fix properly** — create a `bugfix` ticket and run the full pipeline for the underlying issue.
+
+The `mistake` ticket type exists specifically for pipeline violations, incorrect dispatches, and process errors. It is not for code bugs — those are `bugfix` tickets.
 
 ---
 
@@ -281,6 +466,7 @@ Before the Supreme Leader classifies intent or routes to any agent, it MUST exec
 | **Gate Results Recorded** | If at a gate, Gate Results table has current attempt entries. | BLOCKED — run gate first. |
 | **Skips Justified** | Any unchecked Required Step has corresponding Skipped Steps entry with authorisation. | BLOCKED — require authorisation. |
 | **Correction Records** | If retry_count > 0 for any tier, Correction Record exists in passport. | BLOCKED — dispatch to producing agent for post-rejection-correction. |
+| **No-Bypass Check** | The dispatch is NOT routing directly to a producing agent for a code change without a passport and Phase A completion. | BLOCKED — dispatch to PM for passport creation. |
 
 ### Role Separation Rules
 
@@ -312,8 +498,8 @@ Every agent dispatch carries a structured envelope. This ensures context is pres
 ```yaml
 ticket: "<ticket-id>"
 ticket_type: "<feature|bugfix|adhoc|clarification|decision|advisory|mistake>"
-phase: "<A|B|C>"
-step: "<A0|A1|A2|A2a|A3|B1|B2|B2a|B3|B3a|C0|C1|C2|C3|C4>"
+phase: "<A|B|C|CR>"
+step: "<A0|A1|A2|A2a|A3|B1|B2|B2a|B3|B3a|C0|C1|C2|C3|C4|CR1|CR2|CR3>"
 trigger: "<reason for this dispatch>"
 agent: "<agent-role>"
 passport: "docs/project-management/passports/<ticket-id>-passport.md"
@@ -336,6 +522,7 @@ retry_count:
   T2: <number>
   T3: <number>
   T-ARCH: <number>
+review_round: <number>
 OWASP_expansion: "<none | list of added compliance categories>"
 ```
 
@@ -345,8 +532,8 @@ OWASP_expansion: "<none | list of added compliance categories>"
 |-------|-------------|
 | `ticket` | Unique ticket identifier (e.g. `psc-0001`, `psc-adhoc-0001`, `psc-clar-0001`) |
 | `ticket_type` | Ticket type: `feature`, `bugfix`, `adhoc`, `clarification`, `decision`, `advisory`, `mistake` |
-| `phase` | Current pipeline phase (A, B, or C) |
-| `step` | Current step within the phase (A0 through C4) |
+| `phase` | Current pipeline phase (A, B, C, or CR) |
+| `step` | Current step within the phase (A0 through C4, CR1 through CR3) |
 | `trigger` | Why this dispatch occurred (e.g. "A-GATE failed: T3.1 datasheet fidelity") |
 | `agent` | The agent being dispatched to |
 | `passport` | Path to the pipeline passport file tracking completed steps for this task |
@@ -356,6 +543,7 @@ OWASP_expansion: "<none | list of added compliance categories>"
 | `expected_outcomes` | Concrete, verifiable deliverables expected |
 | `next_agent` | Who receives the output next |
 | `retry_count` | Current retry count for each tier at the current gate |
+| `review_round` | Current code review round number (0 if not in CR phase) |
 | `OWASP_expansion` | Any OWASP compliance categories added for this task |
 
 ---
@@ -382,6 +570,9 @@ Which agent handles which intent:
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
 | C4 post-completion review | PM | pipeline, pipeline-passport, flag-protocol |
+| Code review (CR1) | Software Engineer (or dispatched reviewer) | compliance-gate, review-confidence, self-audit-checklist |
+| CR-GATE orchestration | Supreme Leader | pipeline, compliance-gate, pipeline-passport |
+| Review acceptance (CR3) | Code Architect (author) | compliance-gate, verification-before-completion |
 | Debugging | Code Architect | systematic-debugging, domain |
 | Product vision / requirements discovery | Product Designer | assumption-trap, design-taste, ux-patterns |
 | Interaction design / UX review | UX Engineer | assumption-trap, ux-patterns, design-taste |

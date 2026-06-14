@@ -75,6 +75,16 @@ Every step the pipeline requires for this task. Steps are checked off sequential
 - [ ] C3: C-GATE — T1 ✅/❌ | T3 ✅/❌ | T-ARCH ✅/❌ | Verdict: _______
 - [ ] C4: PM Completion Review — Decision: _______ | Closure type: _______
 
+### Phase CR — Code Review
+
+- [ ] CR1: Code Review Round 1 — Reviewer: _______ | Verdict: _______
+- [ ] CR2: CR-GATE — All blocking findings resolved: ✅/❌ | Changes Still Pending empty: ✅/❌ | Verdict: _______
+- [ ] CR1: Code Review Round 2 (if needed) — Reviewer: _______ | Verdict: _______
+- [ ] CR2: CR-GATE Round 2 (if needed) — All blocking findings resolved: ✅/❌ | Changes Still Pending empty: ✅/❌ | Verdict: _______
+- [ ] CR1: Code Review Round N (if needed) — Reviewer: _______ | Verdict: _______
+- [ ] CR2: CR-GATE Round N (if needed) — All blocking findings resolved: ✅/❌ | Changes Still Pending empty: ✅/❌ | Verdict: _______
+- [ ] CR3: Review Acceptance — Author confirms all review feedback addressed
+
 ### Commit
 
 - [ ] COMMIT — C4 decision CLOSE or CLOSE+NEW, all gates passed, all approvals issued
@@ -146,6 +156,56 @@ Produced by the `post-rejection-correction` skill. One record per retry. Require
 | Retry | Gate | Tier | RC Category | Root cause (why missed) | Corrective action | Codified where |
 |-------|------|------|-------------|------------------------|-------------------|----------------|
 | _______ | _______ | _______ | _______ | _______ | _______ | _______ |
+```
+
+---
+
+## Code Reviews
+
+Every ticket MUST complete at least one code review round in Phase CR before commit. Multiple rounds may be needed if blocking findings are identified. This section accumulates all review records.
+
+### Code Review Round <N> — <ticket-id>
+
+Each round produces a review record following the Code Review Format defined in `skills/core/pipeline/SKILL.md § Phase CR — Code Review`. The review record is also written to the log directory as `CR1-review-round-<N>.md`.
+
+### Review Round Log
+
+| Round | Reviewer | Date | Verdict | Blocking Findings (≥80) | Advisory Findings (<80) | Changes Still Pending | CR-GATE Result |
+|-------|----------|------|---------|------------------------|------------------------|---------------------|----------------|
+| 1 | _______ | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ | _______ | _______ | PASS/FAIL |
+| 2 | _______ | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ | _______ | _______ | PASS/FAIL |
+| ... | ... | ... | ... | ... | ... | ... | ... |
+
+### Findings Across All Rounds
+
+Cumulative list of all findings from all review rounds, with status tracking.
+
+| ID | Round | Confidence | Severity | File:Line | Description | Suggested Fix | Status |
+|----|-------|-----------|----------|-----------|-------------|---------------|--------|
+| CR1-F1 | 1 | <score> | Critical/High/Moderate/Low | <file:line> | <description> | <fix> | Open/Resolved |
+| CR1-F2 | 1 | ... | ... | ... | ... | ... | ... |
+| CR2-F1 | 2 | ... | ... | ... | ... | ... | ... |
+
+### Changes Still Pending (Cumulative)
+
+This list MUST be empty for CR-GATE to pass. Any open item blocks commit.
+
+| # | Finding Ref | Description | Assigned To | Round Opened | Round Resolved | Status |
+|---|------------|-------------|-------------|-------------|---------------|--------|
+| 1 | CR<N>-F1 | <what still needs to change> | <who> | <round #> | — | Open/In Progress/Resolved |
+
+### Review Acceptance
+
+After CR-GATE passes, the author confirms all review feedback is addressed.
+
+| Field | Value |
+|-------|-------|
+| Author | <Code Architect / agent role> |
+| Date | <YYYY-MM-DD> |
+| All blocking findings resolved | Yes/No |
+| Changes Still Pending empty | Yes/No |
+| Reviewer verdict | APPROVED/CONDITIONAL PASS/REJECTED |
+| Notes | <any additional notes> |
 ```
 
 ---
