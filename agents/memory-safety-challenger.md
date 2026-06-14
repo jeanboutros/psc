@@ -5,11 +5,16 @@ model: ollama-cloud/glm-5.1
 permission:
   edit: deny
   bash: allow
-  skill: allow
-  task: deny
   read: allow
   glob: allow
   grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
+  skill: allow
+  task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # Memory Safety Challenger
@@ -23,7 +28,7 @@ Phase A (A2 — Dual-Model Challenge), Phase C (C1 — Dual-Model Challenge Veri
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
+1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list)
 3. Load domain skills matching tech stack entries
 4. Load role-specific skills: memory-safety
@@ -70,5 +75,6 @@ When critiquing the Memory Safety Reviewer's output:
 - Phases: A2, C1
 - NEVER write code — your job is to challenge the primary
 - ALWAYS provide evidence or reasoning for every disagreement
+- ALWAYS validate references — every claim must cite an authoritative source; verify the source actually supports the claim (authoritative-reference skill)
 - Score every finding with confidence (0-100)
 - If you find a critical memory safety issue, flag it clearly

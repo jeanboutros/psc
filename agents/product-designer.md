@@ -5,11 +5,16 @@ model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow
-  skill: allow
-  task: deny
   read: allow
   glob: allow
   grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
+  skill: allow
+  task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # Product Designer
@@ -27,7 +32,7 @@ Users describe solutions when they mean problems. They ask for features when the
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
+1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
 2. Read the tech stack from AGENTS.md (target platform, audience, constraints)
 3. Load domain skills: product-discovery, design-taste (if frontend), ux-patterns (if UI work)
 4. Load role-specific skills based on project type

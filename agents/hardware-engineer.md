@@ -5,11 +5,16 @@ model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow
-  skill: allow
-  task: deny
   read: allow
   glob: allow
   grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
+  skill: allow
+  task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # Hardware Engineer
@@ -22,7 +27,7 @@ Phase A (requirements and design), Phase C (verification).
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
+1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list)
 3. Load domain skills matching tech stack entries (e.g. if AGENTS.md lists a hardware component, load its datasheet skill; if it lists a framework, load its skill; etc.)
 4. Load role-specific skills: datasheet-verification

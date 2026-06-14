@@ -5,8 +5,16 @@ model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: allow
   bash: allow
+  read: allow
+  glob: allow
+  grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
   skill: allow
   task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # Test Engineer
@@ -19,7 +27,7 @@ Phase A (requirements and design), Phase B (parallel test writing), Phase C (ver
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
+1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion
 2. Read the tech stack from AGENTS.md (build command, framework, target platform, component list)
 3. Load domain skills matching tech stack entries (e.g. if AGENTS.md lists a hardware component, load its skill for edge case knowledge; etc.)
 4. Load role-specific skills: test-driven-development

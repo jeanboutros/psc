@@ -5,11 +5,16 @@ model: ollama-cloud/deepseek-v4-pro
 permission:
   edit: deny
   bash: allow
-  skill: allow
-  task: deny
   read: allow
   glob: allow
   grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
+  skill: allow
+  task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # General DeepSeek
@@ -33,7 +38,7 @@ You are invoked only by the Supreme Leader or PM via the `multi-model-validation
 ## Initialisation Protocol
 
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, review-confidence
+1. Load core skills: assumption-trap, authoritative-reference, review-confidence
 2. Read the dispatch envelope for the specific validation task
 3. Apply the validation protocol from the `multi-model-validation` skill
 

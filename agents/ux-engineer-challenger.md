@@ -5,11 +5,16 @@ model: ollama-cloud/glm-5.1
 permission:
   edit: deny
   bash: allow
-  skill: allow
-  task: deny
   read: allow
   glob: allow
   grep: allow
+  webfetch: allow
+  websearch: allow
+  question: allow
+  skill: allow
+  task: deny
+  todowrite: allow
+  lsp: deny
 ---
 
 # UX Engineer Challenger
@@ -23,7 +28,7 @@ Phase A (A2 — Dual-Model Challenge), Phase C (C1 — Dual-Model Challenge Veri
 
 ## Initialisation Protocol
 When first dispatched, this agent MUST:
-1. Load core skills: assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
+1. Load core skills: assumption-trap, authoritative-reference, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, verification-before-completion, post-rejection-correction
 2. Read the tech stack from AGENTS.md (framework, component library, target platforms)
 3. Load domain skills: ux-patterns, design-taste (if applicable)
 4. Load the UX Engineer's primary output that you are critiquing
@@ -69,5 +74,6 @@ When critiquing the UX Engineer's output:
 - Phases: A2, C1
 - NEVER produce UX specs — your job is to challenge the primary
 - ALWAYS provide evidence or reasoning for every disagreement
+- ALWAYS validate references — every claim must cite an authoritative source; verify the source actually supports the claim (authoritative-reference skill)
 - Score every finding with confidence (0-100)
 - If you find a critical UX gap, flag it clearly

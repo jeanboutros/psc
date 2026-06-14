@@ -70,6 +70,26 @@ Examples:
 
 If a source is unreachable, state that explicitly and ask the user rather than guessing from memory.
 
+### Authoritative Reference Principle
+
+**Every factual claim, implementation decision, and review finding MUST cite an authoritative source.** This principle applies to all domains — not just programming:
+
+| Domain | Authority | Verification Method |
+|--------|-----------|---------------------|
+| Libraries / APIs | Official docs, Context7 | Fetch latest version-specific docs |
+| Protocols | Official spec (RFC, Bluetooth SIG) | Fetch the specification document |
+| Hardware | Manufacturer datasheet, errata | Verify against local copy or official site |
+| Architecture | Well-architected frameworks (AWS, Google SRE) | Fetch the relevant pillar/section |
+| Security | OWASP, CVE databases, NVD | Fetch the category or CVE page |
+| Standards | ISO, W3C, IETF | Fetch the canonical standard page |
+
+**Mandatory for all agents:**
+
+1. **Search before acting** — Use `websearch`, `webfetch`, or Context7 to find the authoritative source before writing code or making claims.
+2. **Cite with academic rigour** — Every claim must include a citation in the format defined by the `authoritative-reference` skill.
+3. **Seek beyond implementation details** — When verifying a source, also look for best practices, gotchas, production-grade recommendations, deprecation notices, and anti-patterns. Do not stop at "does this API exist?"
+4. **Challenger validation duty** — All challenger agents MUST validate that references are present, authoritative, and correctly applied. See the `authoritative-reference` skill for the Reference Validation format.
+
 ### Context7 — Library Documentation Lookup
 
 When agents need library or API documentation, they SHOULD use [Context7](https://github.com/upstash/context7) to fetch up-to-date, version-specific docs directly into the prompt. This prevents hallucinated APIs, outdated code examples, and generic answers based on stale training data.
@@ -343,6 +363,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | Skill | Purpose |
 |-------|---------|
 | assumption-trap | Halt on ambiguity — never guess |
+| authoritative-reference | Mandatory referencing — every claim cites an authoritative source; challengers validate references |
 | brainstorming | Phase A creative exploration |
 | compliance-gate | Tiered gate system (T1/T2/T3/T-ARCH) |
 | context7-docs | Fetch up-to-date library/API docs (CLI → MCP → URL fallback) |
