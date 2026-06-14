@@ -140,22 +140,53 @@ For the complete pipeline specification, agent routing, dispatch envelope format
 
 ## The Agents
 
-| Agent | Role | Mode |
-|-------|------|------|
-| `supreme-leader` | Orchestrator — dispatches tasks to specialists, enforces pipeline, manages passports | primary |
-| `software-engineer` | Architecture, API design, HAL interfaces, T2 & T-ARCH review | subagent |
-| `hardware-engineer` | Datasheet verification, register models, timing constraints | subagent |
-| `wireless-expert` | RF protocol compliance, channel mapping, modulation | subagent |
-| `security-reviewer` | Buffer safety, stack depth, secrets handling, attack surfaces | subagent |
-| `test-engineer` | Test strategy, static_assert, edge cases, coverage | subagent |
-| `docs-writer` | Documentation quality (language-agnostic — loads doc-standard skill per language), learning docs, reference verification | subagent |
-| `code-architect` | Primary implementation agent (PAU loop, incremental build) | subagent |
-| `memory-safety` | C++ memory safety, RAII, heap analysis, ASAN | subagent |
-| `pm` | Task master — sole authority for creating tasks and tickets | subagent |
-| `skill-recruiter` | Online skill search, safety scanning, skill gap detection, conversation synthesis | subagent |
-| `product-designer` | Vision extraction, requirements discovery — helps users articulate what they want | subagent (optional) |
-| `ux-engineer` | Usability, state completeness, accessibility, interaction design | subagent (optional) |
-| `ui-engineer` | Frontend implementation — builds production-grade UI using specified stack | subagent (optional) |
+| Agent | Role | Mode | Model |
+|-------|------|------|-------|
+| `supreme-leader` | Orchestrator — dispatches tasks to specialists, enforces pipeline, manages passports | primary | `deepseek-v4-pro` |
+| `pm` | Task master — sole authority for creating tasks and tickets | subagent | `nemotron-3-ultra` |
+| `software-engineer` | Architecture, API design, HAL interfaces, T2 & T-ARCH review | subagent | `deepseek-v4-pro` |
+| `hardware-engineer` | Datasheet verification, register models, timing constraints | subagent | `deepseek-v4-pro` |
+| `wireless-expert` | RF protocol compliance, channel mapping, modulation | subagent | `deepseek-v4-pro` |
+| `security-reviewer` | Buffer safety, stack depth, secrets handling, attack surfaces | subagent | `deepseek-v4-pro` |
+| `test-engineer` | Test strategy, static_assert, edge cases, coverage | subagent | `deepseek-v4-pro` |
+| `docs-writer` | Documentation quality (language-agnostic — loads doc-standard skill per language), learning docs, reference verification | subagent | `deepseek-v4-pro` |
+| `code-architect` | Primary implementation agent (PAU loop, incremental build) | subagent | `deepseek-v4-pro` |
+| `memory-safety` | C++ memory safety, RAII, heap analysis, ASAN | subagent | `deepseek-v4-pro` |
+| `code-reviewer` | Structured multi-round code review in Phase CR (confidence-scored findings) | subagent | `minimax-m3` |
+| `skill-recruiter` | Online skill search, safety scanning, skill gap detection, conversation synthesis | subagent | `deepseek-v4-pro` |
+| `product-designer` | Vision extraction, requirements discovery — helps users articulate what they want | subagent | `deepseek-v4-pro` |
+| `ux-engineer` | Usability, state completeness, accessibility, interaction design | subagent | `deepseek-v4-pro` |
+| `ui-engineer` | Frontend implementation — builds production-grade UI using specified stack | subagent | `deepseek-v4-pro` |
+
+### Challenger Agents (Dual-Model Challenge)
+
+Each specialist has a challenger variant powered by `glm-5.1` for independent critique during A2 and C1:
+
+| Challenger | Primary | Model |
+|-----------|---------|-------|
+| `code-architect-challenger` | `code-architect` | `glm-5.1` |
+| `software-engineer-challenger` | `software-engineer` | `glm-5.1` |
+| `test-engineer-challenger` | `test-engineer` | `glm-5.1` |
+| `docs-writer-challenger` | `docs-writer` | `glm-5.1` |
+| `hardware-engineer-challenger` | `hardware-engineer` | `glm-5.1` |
+| `memory-safety-challenger` | `memory-safety` | `glm-5.1` |
+| `security-reviewer-challenger` | `security-reviewer` | `glm-5.1` |
+| `wireless-expert-challenger` | `wireless-expert` | `glm-5.1` |
+| `product-designer-challenger` | `product-designer` | `glm-5.1` |
+| `ux-engineer-challenger` | `ux-engineer` | `glm-5.1` |
+| `ui-engineer-challenger` | `ui-engineer` | `glm-5.1` |
+
+### General Validation Agents (Multi-Model Validation)
+
+Read-only agents for cross-validation, fact-checking, and requirement refinement. Dispatched by supreme-leader and PM only:
+
+| Agent | Model | Priority |
+|-------|-------|----------|
+| `general-kimi` | `kimi-k2.7-code` | 1 (highest) |
+| `general-nemotron` | `nemotron-3-ultra` | 2 |
+| `general-minimax` | `minimax-m3` | 3 |
+| `general-glm` | `glm-5.1` | 4 |
+| `general-deepseek` | `deepseek-v4-pro` | 5 (lowest) |
 
 ## Skills
 
@@ -172,8 +203,8 @@ Skills are the domain knowledge layer — agents are generic roles, and all proj
 
 | Category | Skills | Always Installed? |
 |----------|--------|-------------------|
-| **Core** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
-| **Process** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist | Yes |
+| **Core** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, multi-model-validation | Yes |
+| **Process** | assumption-trap, pau-loop, incremental-execution, compliance-gate, pipeline, review-confidence, flag-protocol, self-audit-checklist, multi-model-validation | Yes |
 | **Testing** | test-driven-development (generic), tdd-cpp (C++ projects), datasheet-verification, systematic-debugging, verification-before-completion, memory-safety, type-design-review, silent-failure | Yes |
 | **UI/Design** | design-taste, ux-patterns | Optional (for projects with UI) |
 | **Domain** | *(your project-specific skills — see "How to Add Your Own Domain Skills" below)* | Optional |
@@ -351,19 +382,36 @@ Human review and testing status for every file in this project.
 | File | Reviewed | Tested |
 |------|----------|--------|
 | `agents/code-architect.md` | [ ] | [ ] |
+| `agents/code-architect-challenger.md` | [ ] | [ ] |
+| `agents/code-reviewer.md` | [ ] | [ ] |
 | `agents/docs-writer.md` | [ ] | [ ] |
+| `agents/docs-writer-challenger.md` | [ ] | [ ] |
+| `agents/general-deepseek.md` | [ ] | [ ] |
+| `agents/general-glm.md` | [ ] | [ ] |
+| `agents/general-kimi.md` | [ ] | [ ] |
+| `agents/general-minimax.md` | [ ] | [ ] |
+| `agents/general-nemotron.md` | [ ] | [ ] |
 | `agents/hardware-engineer.md` | [ ] | [ ] |
+| `agents/hardware-engineer-challenger.md` | [ ] | [ ] |
 | `agents/memory-safety.md` | [ ] | [ ] |
+| `agents/memory-safety-challenger.md` | [ ] | [ ] |
 | `agents/pm.md` | [ ] | [ ] |
 | `agents/product-designer.md` | [ ] | [ ] |
+| `agents/product-designer-challenger.md` | [ ] | [ ] |
 | `agents/security-reviewer.md` | [ ] | [ ] |
+| `agents/security-reviewer-challenger.md` | [ ] | [ ] |
 | `agents/skill-recruiter.md` | [ ] | [ ] |
 | `agents/software-engineer.md` | [ ] | [ ] |
+| `agents/software-engineer-challenger.md` | [ ] | [ ] |
 | `agents/supreme-leader.md` | [ ] | [ ] |
 | `agents/test-engineer.md` | [ ] | [ ] |
+| `agents/test-engineer-challenger.md` | [ ] | [ ] |
 | `agents/ui-engineer.md` | [ ] | [ ] |
+| `agents/ui-engineer-challenger.md` | [ ] | [ ] |
 | `agents/ux-engineer.md` | [ ] | [ ] |
+| `agents/ux-engineer-challenger.md` | [ ] | [ ] |
 | `agents/wireless-expert.md` | [ ] | [ ] |
+| `agents/wireless-expert-challenger.md` | [ ] | [ ] |
 
 ### Core Skills
 
@@ -381,6 +429,7 @@ Human review and testing status for every file in this project.
 | `skills/core/grill-me/SKILL.md` | [ ] | [ ] |
 | `skills/core/incremental-execution/SKILL.md` | [ ] | [ ] |
 | `skills/core/memory-safety/SKILL.md` | [ ] | [ ] |
+| `skills/core/multi-model-validation/SKILL.md` | [ ] | [ ] |
 | `skills/core/pau-loop/SKILL.md` | [ ] | [ ] |
 | `skills/core/pipeline/SKILL.md` | [ ] | [ ] |
 | `skills/core/pipeline-passport/SKILL.md` | [ ] | [ ] |
