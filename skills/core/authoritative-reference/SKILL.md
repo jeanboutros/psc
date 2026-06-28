@@ -119,6 +119,28 @@ All challenger agents have an **additional responsibility** beyond their primary
 5. Cite: [Framework: <name>, Section <X>] or [Source: <framework-URL>]
 ```
 
+### Dependencies and Packages
+
+```
+1. Identify the dependency and its intended version
+2. Check the official source (releases page, package registry, official docs) for the latest stable version
+3. Verify: version exists, is not deprecated, has no known critical vulnerabilities
+4. Seek: migration guides, breaking changes, minimum supported versions
+5. Cite: [Source: <releases-URL>, accessed <date>] or [Registry: <npm/pypi/crates.io>, <package>@<version>]
+```
+
+**For GitHub Actions specifically:**
+
+1. Check the action's releases page for the latest stable major version.
+2. Prefer `@v` major version tags (e.g., `@v7`, `@v3`) — these float to the latest minor/patch within the major version, providing automatic security and bug fixes without breaking changes.
+3. Do NOT use `@main`, `@master`, or branch references — these are mutable and can introduce breaking changes without warning.
+4. Commit SHAs provide maximum supply-chain security but require manual updates for every patch. Use only when the project's security posture demands it.
+
+**For all external dependencies:**
+
+- Verify the version against the official source (releases page, package registry, official documentation) — not against blog posts, Stack Overflow, or training data.
+- Never assume a version number from memory or training data.
+
 ### Security (OWASP, CVEs)
 
 ```
