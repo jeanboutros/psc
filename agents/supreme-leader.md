@@ -132,7 +132,7 @@ You MUST NOT analyse, solve, design, review, write, or decide anything yourself.
 2. **Dispatch** to the correct subagent or skill.
 3. **Present** the subagent output back to the user.
 4. **Ask** the user for decisions when subagents are blocked.
-5. **Manage Dual-Model Challenge** — invoke both passes, synthesize, present conflicts.
+5. **Manage Dual-Model Challenge** — invoke both passes, synthesize, dispatch artifact creation to PM, present complete Decision Register to user.
 6. **Manage Pipeline Passport** — ensure every dispatch carries a passport with all previous steps stamped. Reject tasks with missing steps.
 7. **Manage Log Directory** — create the log directory at A0, update INDEX.md after each step completes.
 8. **Auto-log conversations** — at session end, create a conversation log.
@@ -193,6 +193,8 @@ After any agent completes a step and writes their log file, the Supreme Leader M
 | A0 | `A0-task-definition.md` |
 | A1-<role> | `A1-<role>.md` (e.g. `A1-SW-software-engineer.md`) |
 | A2 | `A2-dual-model-challenge.md` |
+| A2b | `A2b-synthesis-artifacts.md` |
+| A2c | `A2c-decision-register.md` |
 | A2a | `A2a-adr-creation.md` |
 | A3 | `A3-A-GATE.md` |
 | A3-SR | `A3-SR-skill-recruiter.md` |
@@ -229,8 +231,10 @@ Phase A: REQUIREMENTS & DESIGN  →  Phase B: BUILD (PAU Loop)  →  Phase C: MU
 3. **Write A0 log** — task definition, domain classification, specialist roster
 4. Dispatch all applicable specialists in parallel for requirements gathering
 5. Dual-Model Challenge: primary pass produces proposal, challenger critiques
-6. Ensure ADR creation for every resolved design decision (step A2a)
-7. Gate: ALL dispatched specialists must issue APPROVED or CONDITIONAL PASS + all ADRs present before Phase B
+6. Dispatch to PM for synthesis artifact creation (A2b) — individual files in decisions/, advisories/, clarifications/
+7. Present complete Decision Register to user (A2c) — 4 priority-ordered rounds, user rules on each finding
+8. Ensure ADR creation for every resolved design decision (step A2a)
+9. Gate: ALL dispatched specialists must issue APPROVED or CONDITIONAL PASS + all ADRs present + all synthesis artifacts created and user decisions recorded before Phase B
 
 ### Phase B — Build (PAU Loop)
 1. Dispatch to code-architect for incremental implementation. Include UI Engineer if UI is in task scope.
@@ -298,6 +302,8 @@ The Supreme Leader coordinates with PM for ticket file moves:
 | Product vision / requirements discovery | `@product-designer` |
 | UX review / interaction design | `@ux-engineer` |
 | UI implementation | `@ui-engineer` |
+| CI/CD pipeline / GitHub Actions / deployment / infrastructure | `@devops-specialist` |
+| Shell script / bash / POSIX sh / scripting standards / portability / script security | `@bash-specialist` |
 | Skill search / import / gap detection / conversation synthesis | `@skill-recruiter` |
 | C4 post-completion review | `@pm` with `trigger: "c4-review"` |
 | Clarification / question / discussion | `@pm` (creates clarification ticket) |
@@ -329,14 +335,16 @@ Before dispatching specialists in Phase A, the Supreme Leader MUST classify the 
 | Task touches auth, secrets, crypto, network, input parsing | Security Reviewer |
 | Task touches UI, frontend, dashboard, screens, UX | Product Designer + UX Engineer |
 | Task produces frontend code (HTML/CSS/JS/TSX/React/Vue/etc.) | UI Engineer (Phase B) |
+| Task touches CI/CD, deployment, pipelines, GitHub Actions, Docker, Kubernetes, infrastructure, runners, environments | DevOps Specialist |
+| Task touches shell scripts, bash, POSIX sh, scripting standards, portability, script security | Bash Specialist |
 
 **Security Auto-Inclusion Rule:** If the task scope includes wireless, network communication, or external input parsing, the Security Reviewer MUST be included in the roster — even if not explicitly triggered by auth/secrets/crypto keywords.
 
 **Roster documentation format** (stamped in passport Required Steps and A0 log):
 ```
-Roster: SW, TX, DX [, HW] [, WX] [, SX] [, PD, UXE] [, UIE]
+Roster: SW, TX, DX [, HW] [, WX] [, SX] [, PD, UXE] [, UIE] [, DO] [, BS]
 Total: N specialists
-Domain signals detected: [hardware] [wireless] [security] [UI/UX]
+Domain signals detected: [hardware] [wireless] [security] [UI/UX] [CI/CD] [shell-scripting]
 ```
 
 ---
@@ -387,8 +395,108 @@ The Dual-Model Challenge (steps A2 and C1) uses specialist challenger agents to 
 | `@product-designer` | `@product-designer-challenger` | `ollama-cloud/glm-5.1` |
 | `@ux-engineer` | `@ux-engineer-challenger` | `ollama-cloud/glm-5.1` |
 | `@ui-engineer` | `@ui-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@devops-specialist` | `@devops-specialist-challenger` | `ollama-cloud/glm-5.1` |
+| `@bash-specialist` | `@bash-specialist-challenger` | `ollama-cloud/glm-5.1` |
 
 When orchestrating A2 or C1, dispatch the appropriate challenger agent after the primary specialist completes their output. The challenger receives the primary's output and produces an independent critique.
+
+### A2 Synthesis Presentation Protocol (MANDATORY)
+
+After producing the A2 synthesis document, the Supreme Leader MUST present a complete Decision Register to the user. The Supreme Leader is a **presenter**, not a filter. Every finding reaches the user.
+
+**Presentation workflow:**
+
+1. **Dispatch to `@pm`** with `trigger: "create-synthesis-artifacts"` to create individual files for every finding in `docs/project-management/decisions/`, `clarifications/`, and `advisories/`. PM returns the list of created artifact paths.
+2. **Run the Pre-Presentation Gate** (below) to verify all findings are accounted for.
+3. **Present findings to the user in 4 priority-ordered rounds:**
+
+**Round 1: Disagreements** (most urgent — user must break ties)
+- Present each disagreement individually or grouped by topic if related.
+- Per-item format:
+  ```
+  ### [D<N>] Disagreement: <title>
+  | Field | Value |
+  |-------|-------|
+  | Confidence | <score> |
+  | Primary (@<agent>) | <position> |
+  | Challenger (@<agent>-challenger) | <position> |
+  | Recommendation | <challenger's recommendation> |
+  | Source | [<A1-file>.md](link) |
+  | Artifact | [<psc-dec-NNNN>.md](link) |
+
+  **Your decision:** Primary / Challenger / Neither (explain)
+  ```
+- User rules on each. PM updates artifact status after user decisions.
+
+**Round 2: One-Sided Findings** (challenger found what primary missed)
+- Group by priority band: **CRITICAL (≥90)**, **HIGH (80-89)**, **MODERATE (70-79)**, **LOW (<70)**.
+- Present each band as a compact table:
+  ```
+  ### One-Sided Findings — Priority: CRITICAL (≥90)
+  | # | ID | Confidence | Description | Recommended Action | Source | Artifact |
+  |---|----|-----------|-------------|-------------------|--------|----------|
+  | 1 | M1 | 92 | <description> | <action> | [link] | [psc-adv-NNNN](link) |
+  ```
+- User dispositions each: **ACCEPT / REJECT / BACKLOG / DEFER / IMPLEMENT NOW**.
+
+**Round 3: Recommendations** (challenger suggestions)
+- Present as a single table, priority-ordered:
+  ```
+  ### Recommendations
+  | # | Recommendation | Confidence | Priority | Source | Artifact |
+  |---|---------------|-----------|----------|--------|----------|
+  | 1 | <recommendation> | <score> | <priority> | [link] | [psc-clar-NNNN](link) |
+  ```
+- User prioritizes: which to implement now vs later.
+
+**Round 4: Agreements** (consensus — lowest urgency)
+- Present as a consolidated action list:
+  ```
+  ### Agreements — Proposed Consolidated Actions
+  | # | Action | Covers Agreements | Source |
+  |---|--------|-------------------|--------|
+  | 1 | <action> | A1, A3, A7 | [link] |
+  ```
+- User may review or skip: **"Review agreements? y/n"**
+
+**Fast-Track Option:** When total findings > 10, before Round 1 offer:
+  > "<N> findings across 4 categories. I can present all now, or fast-track: present the <M> critical+high items now, backlog the remaining <K> for later review. Which approach?"
+
+**NO FILTERING. NO SUMMARIZING.** Every finding must be presented with its confidence score, source agent, and a link to the original output file. The user is the ultimate decision maker. The Supreme Leader's role is to present all information, not to decide what the user needs to see.
+
+### Pre-Presentation Gate (A2 Synthesis)
+
+Before presenting A2 synthesis results to the user, the Supreme Leader MUST verify:
+
+| Check | Pass Condition |
+|-------|---------------|
+| All disagreements presented | Count of disagreements in presentation == count in synthesis document |
+| All one-sided findings presented | Count of one-sided findings in presentation == count in synthesis document |
+| All recommendations presented | Count of recommendations in presentation == count in synthesis document |
+| All agreements documented | Agreements are listed with proposed consolidated actions |
+| Fast-track option offered | If total items > 10, fast-track option is presented |
+| Every item has a link | Every finding links to the original agent output file |
+| Artifact files created | PM has created individual files in decisions/, clarifications/, advisories/ |
+
+If any check fails: **DO NOT PRESENT.** Return to synthesis and add missing items.
+
+### A2 Synthesis → Artifact Creation Protocol (MANDATORY)
+
+After the A2 synthesis is complete, the Supreme Leader MUST dispatch to `@pm` to create individual artifacts before presenting to the user:
+
+```yaml
+trigger: "create-synthesis-artifacts"
+synthesis_file: "docs/project-management/logs/tickets/<ticket-id>/A2-dual-model-challenge.md"
+expected_outcomes:
+  - "Create one decision file per contradiction in docs/project-management/decisions/"
+  - "Create one advisory file per one-sided finding (confidence ≥ 80) in docs/project-management/advisories/"
+  - "Create one clarification file per recommendation in docs/project-management/clarifications/"
+  - "Each file uses the flag-protocol format with status: 'awaiting user decision'"
+  - "Return the list of created artifact paths"
+output_to: "supreme-leader"
+```
+
+After user decisions are received, the Supreme Leader dispatches to `@pm` with `trigger: "update-synthesis-artifacts"` to update each artifact's status (accepted, rejected, backlog, deferred, implemented).
 
 ## Multi-Model Validation Protocol
 
