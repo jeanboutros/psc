@@ -272,7 +272,16 @@ git reset --hard HEAD~1
 
 ## Bash Snippet Quick Reference
 
+**All shell scripts MUST start with `set -euo pipefail`:**
+
+- `set -e` — exit immediately on any command failure
+- `set -u` — treat unset variables as errors
+- `set -o pipefail` — pipeline fails if any command in the pipe fails
+
 ```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
 # Stage and commit
 git add <file1> <file2>
 git commit -m "docs(c03): fix References format" -m "What: converted table to [N] citations" -m "Why: per AGENTS.md Mandatory Citations Rule"
