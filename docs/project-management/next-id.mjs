@@ -21,11 +21,12 @@
  *   { "kind": "ticket", "ids": ["psc-0001"], "dryRun": false }
  */
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = resolve(__dirname, "../..");
 const COUNTERS_PATH = resolve(__dirname, "counters.json");
 
 const KIND_CONFIG = {
@@ -38,6 +39,27 @@ const KIND_CONFIG = {
     mistake:       { key: "lastMistake",       prefix: "psc-mistake",   width: 4 },
     adr:           { key: "lastAdr",           prefix: "psc-adr",       width: 4 },
     conversation:  { key: "lastConversation",  prefix: "psc-conv",      width: 4 },
+};
+
+const TICKET_DIRS = [
+    "docs/project-management/tickets/open",
+    "docs/project-management/tickets/active",
+    "docs/project-management/tickets/closed",
+    "docs/project-management/tickets/blocked",
+    "docs/project-management/passports",
+    "docs/project-management/logs/tickets",
+];
+
+const SEARCH_DIRS = {
+    ticket:        TICKET_DIRS,
+    adhoc:         TICKET_DIRS,
+    clarification: [...TICKET_DIRS, "docs/project-management/clarifications"],
+    decision:      [...TICKET_DIRS, "docs/project-management/decisions"],
+    advisory:      [...TICKET_DIRS, "docs/project-management/advisories"],
+    mistake:       TICKET_DIRS,
+    epic:          ["docs/project-management/epics"],
+    adr:           ["docs/adr"],
+    conversation:  ["docs/project-management/logs/conversations"],
 };
 
 // ── Argument parsing ────────────────────────────────────────────────
@@ -80,14 +102,34 @@ function formatId(prefix, number, width) {
     return `${prefix}-${String(number).padStart(width, "0")}`;
 }
 
+function idExists(id, kind) {
+    const dirs = SEARCH_DIRS[kind];
+    for (const dir of dirs) {
+        const fullPath = resolve(PROJECT_ROOT, dir);
+        if (!existsSync(fullPath)) continue;
+        try {
+            const entries = readdirSync(fullPath);
+            for (const entry of entries) {
+                if (entry.startsWith(id)) return true;
+            }
+        } catch {
+            // directory can't be read — skip
+        }
+    }
+    return false;
+}
+
 function generateIds(counters, kind, count) {
     const { key, prefix, width } = KIND_CONFIG[kind];
     const ids = [];
     let last = Number(counters[key]) || 0;
 
-    for (let i = 0; i < count; i++) {
+    while (ids.length < count) {
         last += 1;
-        ids.push(formatId(prefix, last, width));
+        const id = formatId(prefix, last, width);
+        if (!idExists(id, kind)) {
+            ids.push(id);
+        }
     }
 
     return { ids, updatedLast: last, counterKey: key };
