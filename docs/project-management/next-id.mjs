@@ -83,7 +83,7 @@ function formatId(prefix, number, width) {
 function generateIds(counters, kind, count) {
     const { key, prefix, width } = KIND_CONFIG[kind];
     const ids = [];
-    let last = counters[key];
+    let last = Number(counters[key]) || 0;
 
     for (let i = 0; i < count; i++) {
         last += 1;
