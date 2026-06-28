@@ -26,6 +26,7 @@ Before dispatching Phase A, the task scope is classified to determine the specia
 | Auth, secrets, crypto, network, input parsing | Security Reviewer |
 | UI, frontend, dashboard, screens, UX | Product Designer + UX Engineer |
 | Frontend code (HTML/CSS/JS/TSX/React/Vue) | UI Engineer (Phase B) |
+| CI/CD, deployment, pipelines, GitHub Actions, Docker, Kubernetes, infrastructure | DevOps Specialist |
 
 ### Sub-steps
 
@@ -34,6 +35,8 @@ Before dispatching Phase A, the task scope is classified to determine the specia
 | A0 | Task Definition | Produce detailed task specification: acceptance criteria, files, constraints, test strategy, doc plan. **Classify task domain** to determine specialist roster. | All agents collaborate |
 | A1 | Parallel Specialist Review | All applicable specialists review the proposal independently | Specialist roster per Task Domain Classification |
 | A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques | Supreme Leader orchestrates |
+| A2b | Synthesis Artifact Creation | PM creates individual decision, advisory, and clarification files from A2 synthesis findings in `docs/project-management/decisions/`, `advisories/`, `clarifications/`. | PM |
+| A2c | Decision Register Presentation | Supreme Leader presents complete Decision Register to user in 4 priority-ordered rounds. User rules on each finding. | Supreme Leader presents, user decides |
 | A2a | ADR Creation | Every resolved design decision from A2 MUST have an ADR file created at `docs/adr/<adr-id>.md`. Use `node docs/project-management/next-id.mjs adr` to get the next ADR sequence number. | SW Engineer (writes), Docs Writer (reviews) |
 | A3 | A-GATE | T3 + T-ARCH compliance check | All dispatched specialists (T3), SW Engineer (T-ARCH) |
 
@@ -42,6 +45,7 @@ Before dispatching Phase A, the task scope is classified to determine the specia
 - All dispatched specialists issue **APPROVED** or **CONDITIONAL PASS**
 - T-ARCH passes
 - Every resolved design decision has an ADR file
+- All synthesis artifacts created in `decisions/`, `advisories/`, `clarifications/` with user decisions recorded
 - On fail: loop back to A1 with specific critique (max 3 loops per tier)
 
 ---
@@ -201,21 +205,20 @@ All dispatched specialists (per the task-driven roster) must issue APPROVED or C
                                      ┌───────────────────────────────────────────────┐
                                      │                                               │
                                      ▼                                               │
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY │
-│  Def     │    │Parallel │    │Challenge│    │Create   │    │T3+T-ARCH│    │         │    │ (unit)  │
-└─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘
-                                                                   │                              │
-                                                                   │ FAIL (3× T3 or T-ARCH)        │
-                                                                   │ ┌───────────────────────────┘  │
-                                                                   │ │  PASS                         │
-                                                                   ▼ ▼                              ▼
-                                                             ┌──────────┐                    ┌──────────┐
-                                                             │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │
-                                                             │(loop back│                   │GATE      │
-                                                             │ with cri-│                   │T1+T-ARCH │
-                                                             │ tique)    │                   └────┬─────┘
-                                                             └──────────┘                        │       │
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2b:Art- │───▶│A2c:Dec- │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │
+│  Def     │    │Parallel │    │Challenge│    │ifacts   │    │ision Reg│    │Create   │    │T3+T-ARCH│    │         │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘
+                                                                   ▲                           │
+                                                                   │ FAIL (3× T3 or T-ARCH)    │
+                                                                   │                           │ PASS
+                                                                   │                           ▼
+                                                              ┌──────────┐              ┌──────────┐
+                                                              │A1:Review │◀── 3×T3 ───│B2a:UNIT  │
+                                                              │(loop back│             │GATE      │
+                                                              │ with cri-│             │T1+T-ARCH │
+                                                              │ tique)    │             └────┬─────┘
+                                                              └──────────┘                  │       │
                                                                                                   │       │
                                                                        PASS ────────────────────┘       │
                                                                                             │
@@ -307,9 +310,11 @@ All dispatched specialists (per the task-driven roster) must issue APPROVED or C
 |------|-------|----|-----------|
 | A0 | Task defined | A1 | Task domain classified, specialist roster determined |
 | A1 | Reviews complete | A2 | All dispatched specialists reviewed |
-| A2 | Challenge complete | A2a | Synthesis produced, decisions identified |
+| A2 | Challenge complete | A2b | Synthesis produced, decisions identified |
+| A2b | Artifacts created | A2c | PM created individual files in decisions/, advisories/, clarifications/ |
+| A2c | User decisions received | A2a | User has ruled on all findings; PM updated artifact statuses |
 | A2a | ADRs created | A3 | ADR file exists for every resolved decision |
-| A3 | A-GATE passes | B1 | All dispatched specialists APPROVED/CONDITIONAL PASS + T-ARCH passes + ADRs present |
+| A3 | A-GATE passes | B1 | All dispatched specialists APPROVED/CONDITIONAL PASS + T-ARCH passes + ADRs present + artifacts created and user decisions recorded |
 | A3 | A-GATE fails | A1 | REJECTED or T-ARCH fail; loop back (max 3×) |
 | B1 | Plan complete | B2 | Logical units identified |
 | B2 | Unit implemented | B2a | Build passes locally |
@@ -415,6 +420,14 @@ OWASP_expansion: "<none | list of added compliance categories>"
 | Product vision / requirements discovery | Product Designer | assumption-trap, design-taste, ux-patterns |
 | Interaction design / UX review | UX Engineer | assumption-trap, ux-patterns, design-taste |
 | UI implementation | UI Engineer | pau-loop, incremental-execution, design-taste, ux-patterns |
+| CI/CD pipeline design | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| GitHub Actions workflow | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Deployment strategy | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Infrastructure / runner config | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Shell script design / review | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script portability audit | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script security hardening | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script testing strategy | Bash Specialist | assumption-trap, bash-scripting |
 
 ---
 
@@ -432,10 +445,14 @@ Used in **Phase A** (architecture) and **Phase C** (verification).
    - Security gaps
    - Protocol non-compliance
    - T-ARCH violations (logical errors, structural issues, principle misalignment)
-3. **Synthesis** — Supreme Leader merges findings:
-   - Agreements → accepted
-   - Contradictions → presented to user for decision
-   - One-sided findings → accepted if well-evidenced, otherwise flagged
+3. **Synthesis** — Supreme Leader merges findings into a synthesis document. Then dispatches to PM for artifact creation, runs the Pre-Presentation Gate, and presents the complete Decision Register to the user in 4 priority-ordered rounds:
+   - **Round 1: Disagreements** — user breaks ties (Primary / Challenger / Neither)
+   - **Round 2: One-Sided Findings** — user dispositions each (ACCEPT / REJECT / BACKLOG / DEFER / IMPLEMENT NOW)
+   - **Round 3: Recommendations** — user prioritizes
+   - **Round 4: Agreements** — user may review or skip
+   - **Fast-Track Option** — when >10 findings, offer to present critical+high now, backlog rest
+
+**NO finding may be routed to Phase B without user disposition.** The Supreme Leader MUST NOT decide which findings are "accepted for implementation" — only the user can make that decision.
 
 ### When to Invoke
 
