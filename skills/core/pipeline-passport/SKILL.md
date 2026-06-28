@@ -53,9 +53,12 @@ Every step the pipeline requires for this task. Steps are checked off sequential
   - [ ] A1-SX: Security Reviewer (conditional — if security in scope)
   - [ ] A1-PD: Product Designer (conditional — if UI/UX in scope)
   - [ ] A1-UX: UX Engineer (conditional — if UI/UX in scope)
+  - [ ] A1-DO: DevOps Specialist (conditional — if CI/CD in scope)
 - [ ] A2: Dual-Model Challenge — primary pass + challenger pass
+- [ ] A2b: Synthesis Artifact Creation — PM creates individual files in decisions/, advisories/, clarifications/
+- [ ] A2c: Decision Register Presentation — Supreme Leader presents findings to user, user rules on each
 - [ ] A2a: ADR Creation — ADR file for every resolved design decision
-- [ ] A3: A-GATE — T3 ✅/❌ | T-ARCH ✅/❌ | ADRs present ✅/❌ | Verdict: _______
+- [ ] A3: A-GATE — T3 ✅/❌ | T-ARCH ✅/❌ | ADRs present ✅/❌ | Artifacts created ✅/❌ | User decisions recorded ✅/❌ | Verdict: _______
 
 ### Phase B — Build (PAU Loop)
 
@@ -117,8 +120,11 @@ Every step execution is logged here with timestamp, agent, and result.
 | A1-SX | security-reviewer | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ |
 | A1-PD | product-designer | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ |
 | A1-UX | ux-engineer | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ |
+| A1-DO | devops-specialist | _______ | APPROVED/CONDITIONAL PASS/REJECTED | _______ |
 | A2-Primary | _______ | _______ | _______ | _______ |
 | A2-Challenger | _______ | _______ | _______ | _______ |
+| A2b-Artifacts | pm | _______ | _______ | _______ |
+| A2c-Decision-Register | supreme-leader | _______ | _______ | _______ |
 | A2a-ADR | _______ | _______ | _______ | _______ |
 | A3-Gate | supreme-leader | _______ | PASS/FAIL | T3: __ T-ARCH: __ ADRs: __ |
 | ... | ... | ... | ... | ... |

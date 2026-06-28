@@ -39,6 +39,8 @@ Additional specialists are dispatched based on task scope:
 | Task touches auth, secrets, crypto, network, input parsing | Security Reviewer |
 | Task touches UI, frontend, dashboard, screens, UX | **Product Designer** + **UX Engineer** |
 | Task produces frontend code (HTML/CSS/JS/TSX/React/Vue/etc.) | **UI Engineer** (Phase B) |
+| Task touches CI/CD, deployment, pipelines, GitHub Actions, Docker, Kubernetes, infrastructure, runners, environments | DevOps Specialist |
+| Task touches shell scripts, bash, POSIX sh, scripting standards, portability, script security | Bash Specialist |
 
 ### Specialist Roster Rule
 
@@ -48,7 +50,9 @@ The specialist count is **not** fixed at 6. It is determined by task scope:
 - With wireless: +1 (Wireless Expert)
 - With security: +1 (Security Reviewer) — automatically included if wireless or network is in scope
 - With UI/UX: +3 (Product Designer, UX Engineer, UI Engineer)
-- Maximum: 8 (all specialists)
+- With CI/CD: +1 (DevOps Specialist)
+- With shell scripting: +1 (Bash Specialist)
+- Maximum: 10 (all specialists)
 
 The Supreme Leader MUST document the specialist roster in the passport's Required Steps section before A1 dispatch. A-GATE and C-GATE criteria adapt to the actual roster — all dispatched specialists must approve.
 
@@ -67,10 +71,12 @@ The Supreme Leader MUST document the specialist roster in the passport's Require
 | A0 | Task Definition | Produce detailed task specification: acceptance criteria, files, constraints, test strategy, doc plan. **Classify task domain** to determine specialist roster. | All agents collaborate |
 | A1 | Parallel Specialist Review | All applicable specialists review the proposal independently, per the task-driven specialist roster | Specialist roster per Task Domain Classification |
 | A2 | Dual-Model Challenge | Two model passes review architecture: primary produces, challenger critiques. Primary specialist uses their default model; challenger uses `ollama-cloud/glm-5.1` via the corresponding `*-challenger` agent. | Supreme Leader orchestrates |
+| A2b | Synthesis Artifact Creation | PM creates individual decision, advisory, and clarification files from A2 synthesis findings in `docs/project-management/decisions/`, `advisories/`, `clarifications/`. | PM |
+| A2c | Decision Register Presentation | Supreme Leader presents complete Decision Register to user in 4 priority-ordered rounds. User rules on each finding. | Supreme Leader presents, user decides |
 | A2a | ADR Creation | Every resolved design decision from A2 MUST have an ADR file created at `docs/adr/<adr-id>.md`. Use `node docs/project-management/next-id.mjs adr` to get the next ADR sequence number. | SW Engineer (writes), Docs Writer (reviews) |
 | A3 | A-GATE | T3 + T-ARCH compliance check + skill coverage check | All dispatched specialists (T3), SW Engineer (T-ARCH), Skill Recruiter (skill gap) |
 
-**A-GATE pass criteria:** All dispatched specialists issue APPROVED or CONDITIONAL PASS + T-ARCH passes + every resolved decision has an ADR file + Skill Recruiter confirms skill coverage for domain classification.
+**A-GATE pass criteria:** All dispatched specialists issue APPROVED or CONDITIONAL PASS + T-ARCH passes + every resolved decision has an ADR file + Skill Recruiter confirms skill coverage for domain classification + all A2 synthesis artifacts created and user decisions recorded.
 **A-GATE fail:** Any REJECTED → producing agent runs `post-rejection-correction` protocol first, then loop back to A1 with specific critique (max 3 loops at T3).
 
 ### A2a — ADR Creation Protocol
@@ -110,7 +116,7 @@ What we chose and why.
 What becomes easier, harder, or blocked by this decision.
 ```
 
-**A-GATE check:** The Supreme Leader verifies that every resolved decision from the A2 synthesis has a corresponding ADR file at `docs/adr/`. Missing ADRs → A-GATE fail with critique "missing ADR for decision <X>".
+**A-GATE check:** The Supreme Leader verifies that every resolved decision from the A2 synthesis has a corresponding ADR file at `docs/adr/`, and that all synthesis artifacts have been created in `docs/project-management/decisions/`, `advisories/`, and `clarifications/` with user decisions recorded. Missing ADRs → A-GATE fail with critique "missing ADR for decision <X>". Missing artifacts or unrecorded user decisions → A-GATE fail with critique "synthesis artifacts incomplete".
 
 **User-prompted-twice signal:** If the user provides clarification or requirements during Phase A that the agent should have asked for, this is a Phase A quality failure. The agent did not apply `assumption-trap` correctly or asked an insufficient range of questions. Treat it the same as a gate rejection: run the `post-rejection-correction` protocol (maps to RC-2: Missing Question Category) before continuing. The user should never need to volunteer requirements — the agent must ask.
 
@@ -260,21 +266,20 @@ List of changes that must be made before this review can pass. This list MUST be
                                      ┌───────────────────────────────────────────────┐
                                      │                                               │
                                      ▼                                               │
-┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
-│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │───▶│B2:APPLY │
-│  Def     │    │Parallel │    │Challenge│    │Create   │    │T3+T-ARCH│    │         │    │ (unit)  │
-└─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘    └────┬────┘
-                                                                   │                              │
-                                                                   │ FAIL (3× T3 or T-ARCH)        │
-                                                                   │ ┌───────────────────────────┘  │
-                                                                   │ │  PASS                         │
-                                                                   ▼ ▼                              ▼
-                                                             ┌──────────┐                    ┌──────────┐
-                                                             │A1:Review │◀──── 3×T3 ────   │B2a:UNIT  │
-                                                             │(loop back│                   │GATE      │
-                                                             │ with cri-│                   │T1+T-ARCH │
-                                                             │ tique)    │                   └────┬─────┘
-                                                             └──────────┘                        │       │
+┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐    ┌─────────┐
+│  A0:Task │───▶│A1:Review│───▶│A2:Dual │───▶│A2b:Art- │───▶│A2c:Dec- │───▶│A2a:ADRs │───▶│A3:A-GATE│───▶│ B1:PLAN │
+│  Def     │    │Parallel │    │Challenge│    │ifacts   │    │ision Reg│    │Create   │    │T3+T-ARCH│    │         │
+└─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └─────────┘    └────┬────┘    └─────────┘
+                                                                   ▲                           │
+                                                                   │ FAIL (3× T3 or T-ARCH)    │
+                                                                   │                           │ PASS
+                                                                   │                           ▼
+                                                              ┌──────────┐              ┌──────────┐
+                                                              │A1:Review │◀── 3×T3 ───│B2a:UNIT  │
+                                                              │(loop back│             │GATE      │
+                                                              │ with cri-│             │T1+T-ARCH │
+                                                              │ tique)    │             └────┬─────┘
+                                                              └──────────┘                  │       │
                                                                                                   │       │
                                                                        PASS ────────────────────┘       │
                                                                                             │
@@ -366,7 +371,9 @@ List of changes that must be made before this review can pass. This list MUST be
 |-----------|-------|----------|-----------|
 | A0 | Task defined | A1 | Task domain classified, specialist roster determined |
 | A1 | Reviews complete | A2 | All dispatched specialists reviewed |
-| A2 | Challenge complete | A2a | Synthesis produced, decisions identified |
+| A2 | Challenge complete | A2b | Synthesis produced, decisions identified |
+| A2b | Artifacts created | A2c | PM created individual files in decisions/, advisories/, clarifications/ |
+| A2c | User decisions received | A2a | User has ruled on all findings; PM updated artifact statuses |
 | A2a | ADRs created | A3 | ADR file exists for every resolved decision |
 | A3 | A-GATE passes | B1 | All dispatched specialists APPROVED/CONDITIONAL PASS + T-ARCH passes + ADRs present |
 | A3 | A-GATE fails | A1 | REJECTED or T-ARCH fail or missing ADR; loop back with critique (max 3×) |
@@ -570,6 +577,8 @@ Which agent handles which intent:
 | Dispatch/routing only | Supreme Leader | pipeline, flag-protocol |
 | Task creation | PM | pipeline, flag-protocol |
 | C4 post-completion review | PM | pipeline, pipeline-passport, flag-protocol |
+| Synthesis artifact creation | PM | pipeline, flag-protocol |
+| Synthesis artifact update | PM | pipeline, flag-protocol |
 | Code review (CR1) | Code Reviewer | compliance-gate, review-confidence, self-audit-checklist, software-engineering-principles |
 | CR-GATE orchestration | Supreme Leader | pipeline, compliance-gate, pipeline-passport |
 | Review acceptance (CR3) | Code Architect (author) | compliance-gate, verification-before-completion |
@@ -580,6 +589,15 @@ Which agent handles which intent:
 | Skill search / import | Skill Recruiter | assumption-trap, skill-recruiter |
 | Skill gap detection (gate) | Skill Recruiter | assumption-trap, compliance-gate, skill-recruiter |
 | Conversation synthesis | Skill Recruiter | assumption-trap, skill-recruiter |
+| CI/CD pipeline design | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| GitHub Actions workflow | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Deployment strategy | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Infrastructure / runner config | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Pipeline security audit | DevOps Specialist | assumption-trap, ci-cd-pipeline, github-actions |
+| Shell script design / review | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script portability audit | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script security hardening | Bash Specialist | assumption-trap, bash-scripting |
+| Shell script testing strategy | Bash Specialist | assumption-trap, bash-scripting |
 
 ---
 
@@ -591,10 +609,86 @@ Used in **Phase A** (architecture) and **Phase C** (verification).
 
 1. **Primary pass** — First model produces the output (architecture proposal or verification). Each specialist uses their default model (see agent file for `model:` field).
 2. **Challenger pass** — Second model independently reviews, using a different model. The challenger agent for each specialist uses `ollama-cloud/glm-5.1`. See the Challenger Agent Table below for mappings.
-3. **Synthesis** — Supreme Leader merges findings:
-    - Agreements → accepted
-    - Contradictions → presented to user for decision
-    - One-sided findings → accepted if well-evidenced, otherwise flagged
+3. **Synthesis** — Supreme Leader merges findings into a synthesis document. Then dispatches to PM for artifact creation, runs the Pre-Presentation Gate, and presents the complete Decision Register to the user.
+
+### A2 Synthesis Rules (Clarified)
+
+The word "accepted" in A2 synthesis means **"accepted as a valid finding to present to the user"** — NOT "accepted for implementation without user review." Only the user can decide what gets implemented.
+
+| Finding Type | Synthesis Action | Presentation to User | User Action |
+|-------------|-----------------|---------------------|-------------|
+| **Agreements** | Document in synthesis as consolidated actions | Present as consolidated action list. User may review or skip. | Review (optional) or skip |
+| **Contradictions** | Document both positions with recommendation | Present each individually for explicit decision | Rule: Primary / Challenger / Neither |
+| **One-sided findings** | Document with confidence and recommended action | Present priority-ordered by confidence band | Disposition: ACCEPT / REJECT / BACKLOG / DEFER / IMPLEMENT NOW |
+| **Recommendations** | Document with priority | Present as priority-ordered table | Prioritize: implement now vs later |
+
+**NO finding may be routed to Phase B without user disposition.** The Supreme Leader MUST NOT decide which findings are "accepted for implementation" — only the user can make that decision.
+
+### A2 Decision Register Template
+
+After every A2 synthesis, the Supreme Leader MUST produce a Decision Register in this format:
+
+```markdown
+# Decision Register — <ticket-id>
+
+## Disagreements (N) — Primary vs Challenger Diverge
+| # | Description | Primary | Challenger | Recommendation | Links |
+|---|-------------|---------|------------|----------------|-------|
+| D1 | <description> | <primary position> | <challenger position> | <recommendation> | [A1-<role>.md](link) |
+
+## One-Sided Findings (N) — Challenger Only, Priority-Ordered
+### Priority: CRITICAL (≥90)
+| # | ID | Confidence | Description | Recommended Action | Links |
+|---|----|-----------|-------------|-------------------|-------|
+| 1 | M1 | 92 | <description> | <action> | [A1-<role>.md](link) |
+
+### Priority: HIGH (80-89)
+| # | ID | Confidence | Description | Recommended Action | Links |
+|---|----|-----------|-------------|-------------------|-------|
+
+### Priority: MODERATE (70-79)
+| # | ID | Confidence | Description | Recommended Action | Links |
+|---|----|-----------|-------------|-------------------|-------|
+
+### Priority: LOW (<70)
+| # | ID | Confidence | Description | Recommended Action | Links |
+|---|----|-----------|-------------|-------------------|-------|
+
+## Recommendations (N) — Challenger
+| # | Recommendation | Confidence | Priority | Links |
+|---|---------------|-----------|----------|-------|
+
+## Agreements (N) — Proposed Consolidated Actions
+| # | Action | Covers Agreements | Links |
+|---|--------|-------------------|-------|
+
+## Fast-Track Option
+When count > 10: offer "Solve immediate, backlog rest" with rationale.
+
+## User Decisions Required
+Checklist of all items requiring user disposition.
+```
+
+### A2 Synthesis → Artifact Creation Protocol
+
+After the A2 synthesis is complete, the Supreme Leader MUST dispatch to `@pm` with `trigger: "create-synthesis-artifacts"` to create individual files for every finding:
+
+1. Every **CONTRADICTION** → one decision file in `docs/project-management/decisions/` (e.g., `psc-dec-0001.md`) using the flag-protocol decision format
+2. Every **ONE-SIDED FINDING** with confidence ≥ 80 → one advisory file in `docs/project-management/advisories/` (e.g., `psc-adv-0001.md`)
+3. Every **RECOMMENDATION** requiring user prioritization → one clarification file in `docs/project-management/clarifications/` (e.g., `psc-clar-0001.md`)
+
+Each artifact must include:
+- Link back to the source agent output
+- The finding's confidence score
+- The recommended action
+- Status: `awaiting user decision`
+
+After user decisions are received, the Supreme Leader dispatches to `@pm` with `trigger: "update-synthesis-artifacts"` to update each artifact's status:
+- ACCEPT → status: `accepted` with implementation ticket reference
+- REJECT → status: `rejected` with rationale
+- BACKLOG → status: `backlog` with priority
+- DEFER → status: `deferred` with re-evaluation date
+- IMPLEMENT NOW → status: `implemented` with implementation ticket reference
 
 ### Challenger Agent Table
 
@@ -613,6 +707,8 @@ Each specialist has a corresponding challenger agent that provides the Dual-Mode
 | `@product-designer` | `@product-designer-challenger` | `ollama-cloud/glm-5.1` |
 | `@ux-engineer` | `@ux-engineer-challenger` | `ollama-cloud/glm-5.1` |
 | `@ui-engineer` | `@ui-engineer-challenger` | `ollama-cloud/glm-5.1` |
+| `@devops-specialist` | `@devops-specialist-challenger` | `ollama-cloud/glm-5.1` |
+| `@bash-specialist` | `@bash-specialist-challenger` | `ollama-cloud/glm-5.1` |
 
 ### Multi-Model Validation
 
