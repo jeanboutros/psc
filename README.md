@@ -157,6 +157,8 @@ For the complete pipeline specification, agent routing, dispatch envelope format
 | `product-designer` | Vision extraction, requirements discovery — helps users articulate what they want | subagent | `deepseek-v4-pro` |
 | `ux-engineer` | Usability, state completeness, accessibility, interaction design | subagent | `deepseek-v4-pro` |
 | `ui-engineer` | Frontend implementation — builds production-grade UI using specified stack | subagent | `deepseek-v4-pro` |
+| `devops-specialist` | CI/CD pipeline design, GitHub Actions, deployment strategy, infrastructure-as-code, runner management | subagent | `deepseek-v4-pro` |
+| `bash-specialist` | Shell script design, portability audit, security hardening, testing strategy | subagent | `deepseek-v4-pro` |
 
 ### Challenger Agents (Dual-Model Challenge)
 
@@ -175,6 +177,8 @@ Each specialist has a challenger variant powered by `glm-5.1` for independent cr
 | `product-designer-challenger` | `product-designer` | `glm-5.1` |
 | `ux-engineer-challenger` | `ux-engineer` | `glm-5.1` |
 | `ui-engineer-challenger` | `ui-engineer` | `glm-5.1` |
+| `devops-specialist-challenger` | `devops-specialist` | `glm-5.1` |
+| `bash-specialist-challenger` | `bash-specialist` | `glm-5.1` |
 
 ### General Validation Agents (Multi-Model Validation)
 
@@ -412,6 +416,10 @@ Human review and testing status for every file in this project.
 | `agents/ux-engineer-challenger.md` | [ ] | [ ] |
 | `agents/wireless-expert.md` | [ ] | [ ] |
 | `agents/wireless-expert-challenger.md` | [ ] | [ ] |
+| `agents/devops-specialist.md` | [ ] | [ ] |
+| `agents/devops-specialist-challenger.md` | [ ] | [ ] |
+| `agents/bash-specialist.md` | [ ] | [ ] |
+| `agents/bash-specialist-challenger.md` | [ ] | [ ] |
 
 ### Core Skills
 
@@ -419,6 +427,7 @@ Human review and testing status for every file in this project.
 |------|----------|--------|
 | `skills/core/assumption-trap/SKILL.md` | [ ] | [ ] |
 | `skills/core/brainstorming/SKILL.md` | [ ] | [ ] |
+| `skills/core/ci-cd-pipeline/SKILL.md` | [ ] | [ ] |
 | `skills/core/compliance-gate/SKILL.md` | [ ] | [ ] |
 | `skills/core/context7-docs/SKILL.md` | [ ] | [ ] |
 | `skills/core/cross-document-consistency/SKILL.md` | [ ] | [ ] |
@@ -449,10 +458,12 @@ Human review and testing status for every file in this project.
 
 | File | Reviewed | Tested |
 |------|----------|--------|
+| `skills/domain/bash-scripting/SKILL.md` | [ ] | [ ] |
 | `skills/domain/ble-protocol/SKILL.md` | [ ] | [ ] |
 | `skills/domain/cpp-embedded/SKILL.md` | [ ] | [ ] |
 | `skills/domain/design-taste/SKILL.md` | [ ] | [ ] |
 | `skills/domain/esp-idf/SKILL.md` | [ ] | [ ] |
+| `skills/domain/github-actions/SKILL.md` | [ ] | [ ] |
 | `skills/domain/nrf24l01plus/SKILL.md` | [ ] | [ ] |
 | `skills/domain/nrf52840-sniffer/SKILL.md` | [ ] | [ ] |
 | `skills/domain/ubertooth/SKILL.md` | [ ] | [ ] |

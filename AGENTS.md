@@ -397,6 +397,7 @@ This rule exists because advisory text ("I should not write code") is insufficie
 | assumption-trap | Halt on ambiguity — never guess |
 | authoritative-reference | Mandatory referencing — every claim cites an authoritative source; challengers validate references |
 | brainstorming | Phase A creative exploration |
+| ci-cd-pipeline | CI/CD pipeline design principles, deployment strategies, environment management, build matrix patterns, artifact management |
 | compliance-gate | Tiered gate system (T1/T2/T3/T-ARCH) |
 | context7-docs | Fetch up-to-date library/API docs (CLI → MCP → URL fallback) |
 | cross-document-consistency | Grep-based cross-document checks (DC-1 through DC-4) |
@@ -428,10 +429,12 @@ This rule exists because advisory text ("I should not write code") is insufficie
 
 | Skill | Purpose |
 |-------|---------|
+| bash-scripting | Bash scripting standards, defensive programming, POSIX portability, testing frameworks, security hardening |
 | ble-protocol | BLE protocol compliance |
 | cpp-embedded | Embedded C++ patterns |
 | design-taste | Anti-slop frontend design |
 | esp-idf | ESP-IDF framework |
+| github-actions | GitHub Actions workflow syntax, events, jobs, runners, secrets, OIDC, security hardening, Dependabot, marketplace actions |
 | nrf24l01plus | nRF24L01+ radio chip |
 | nrf52840-sniffer | nRF52840 sniffer |
 | ubertooth | Ubertooth platform |
