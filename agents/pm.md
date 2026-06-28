@@ -44,7 +44,7 @@ ticket: "<ticket-id>"
 ticket_type: "<feature|bugfix|adhoc|clarification|decision|advisory|mistake>"
 phase: "<A|B|C>"
 step: "<any step>"
-trigger: "<flag_raised | ambiguity_resolved | director_request | create-passport | c4-review>"
+trigger: "<flag_raised | ambiguity_resolved | director_request | create-passport | c4-review | create-synthesis-artifacts | update-synthesis-artifacts>"
 agent: "<pm>"
 passport: "docs/project-management/passports/<ticket-id>-passport.md"
 log_dir: "docs/project-management/logs/tickets/<ticket-id>/"
@@ -58,6 +58,8 @@ expected_outcomes:
   - "passport created at docs/project-management/passports/<ticket-id>-passport.md"
   - "flag processed: status updated"
   - "decision recorded: new entry in decision log"
+  - "synthesis artifacts created in decisions/, advisories/, clarifications/"
+  - "synthesis artifacts updated with user decisions"
   - "C4 verdict: CLOSE | CLOSE+NEW | BLOCK | RE-DISPATCH | CANCEL | ARCHIVE"
 next_agent: "<supreme-leader>"
 retry_count:
@@ -263,7 +265,70 @@ When PM determines a ticket is no longer needed:
 
 Process flags raised by other agents per `flag-protocol` skill. Create tickets for non-blocking flags. Blocking flags pause the pipeline.
 
-### 7. Decision Records
+### 7. Synthesis Artifact Creation
+
+When dispatched with `trigger: "create-synthesis-artifacts"`:
+
+1. Read the A2 synthesis file at the path provided in the dispatch envelope's `synthesis_file` field.
+2. Parse the synthesis to identify all findings: disagreements, one-sided findings (confidence ≥ 80), and recommendations.
+3. For each finding, create an individual artifact file:
+
+| Finding Type | Directory | ID Prefix | File Format |
+|-------------|-----------|-----------|-------------|
+| Disagreement (contradiction) | `docs/project-management/decisions/` | `psc-dec` | Decision artifact (see template below) |
+| One-sided finding (confidence ≥ 80) | `docs/project-management/advisories/` | `psc-adv` | Advisory artifact (see template below) |
+| Recommendation | `docs/project-management/clarifications/` | `psc-clar` | Clarification artifact (see template below) |
+
+4. Generate IDs using `node docs/project-management/next-id.mjs <kind>`.
+5. Each artifact file uses this template:
+
+```markdown
+# <Type>: <title>
+
+| Field | Value |
+|-------|-------|
+| ID | <psc-xxx-NNNN> |
+| Type | decision / advisory / clarification |
+| Status | awaiting user decision |
+| Confidence | <score> |
+| Priority | critical / high / medium / low |
+| Source ticket | <ticket-id> |
+| Source agent | <agent role> |
+| Source file | [<A1-file>.md](link) |
+| Created | <YYYY-MM-DD> |
+
+## Description
+<the finding as stated in the synthesis>
+
+## Recommended Action
+<the recommended action from the synthesis>
+
+## User Decision
+<filled after user rules — one of: accepted / rejected / backlog / deferred / implemented>
+
+## Decision Rationale
+<filled after user rules>
+
+## Implementation Ticket
+<filled if accepted or implemented — reference to the implementation ticket>
+```
+
+6. Write the A2b log file at `docs/project-management/logs/tickets/<ticket-id>/A2b-synthesis-artifacts.md` listing all created artifacts.
+7. Return the list of created artifact paths to the Supreme Leader.
+
+### 8. Synthesis Artifact Update
+
+When dispatched with `trigger: "update-synthesis-artifacts"`:
+
+1. Receive the user's decisions from the Supreme Leader (mapping of artifact ID → decision).
+2. For each artifact, update:
+   - `Status` → `accepted` / `rejected` / `backlog` / `deferred` / `implemented`
+   - `User Decision` → the user's chosen disposition
+   - `Decision Rationale` → user's explanation (if provided)
+   - `Implementation Ticket` → reference to the implementation ticket (if accepted or implemented)
+3. Return confirmation to the Supreme Leader.
+
+### 9. Decision Records
 
 ```markdown
 | ID | Date | Decision | Context | Raised by |
@@ -271,7 +336,7 @@ Process flags raised by other agents per `flag-protocol` skill. Create tickets f
 | psc-dec-NNNN | YYYY-MM-DD | [what was decided] | [why] | [agent] |
 ```
 
-### 8. C4 Log Writing
+### 10. C4 Log Writing
 
 After making the C4 decision, PM writes the C4 log file:
 
