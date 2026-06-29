@@ -136,7 +136,8 @@ spec (left) and the Python prototype (right).
 | **Outcome** | The payload an agent returns at a state — the data that flows along the transition edge to the next state. | `AgentOutcome` (dataclass) | ASL task output; Camunda job variables |
 | **Context** | What a state handler sees: `input` (predecessor's output) + `vars` (flat blackboard) + `meta` (`from_state`, `entry_count`, `attempt`, `entered_at`). O(1) memory; no full path surfaced. | `Context` (dataclass) + `StateMeta` (frozen dataclass) | ASL Context Object; Camunda variable scope; Temporal replay-reconstructed locals |
 | **Passport** | The persisted runtime state of one ticket: current state, step log, gate results, decisions, retries, parallel progress, vars, version pins. JSON-authoritative; Markdown mirror derived. | `dict[str, Any]` (the passport JSON) + `JsonPassportStore` adapter | ASL execution snapshot; Camunda process instance variables |
-| **Ticket** | A single workflow execution — one run of a workflow definition, pinned to a snapshot of the definition + agents at A0. | `str` (ticket id, e.g. `TKT-0001`) | Temporal workflow execution; Step Functions execution ARN |
+| **Subject** | The entity a workflow tracks through its states. Generalised — may be a **ticket** (`TKT-####`), a **survey** (`SVY-####`), a **process** (`PRC-####`), or a **review** (`REV-####`). The engine is agnostic to the subject type; the `subject_type` field is metadata for human-readable labels. | `str` (subject id, e.g. `TKT-0001`) | Temporal workflow execution; Step Functions execution ARN; Camunda process instance |
+| **Ticket** | A subject of type `ticket` — a single workflow execution for the PSC pipeline (feature, bugfix, adhoc). | `str` (`TKT-####`) | PSC-specific instance of Subject |
 | **Roster** | The set of specialist agents dispatched in parallel at A1/C2. Dynamic (3–10), resolved from `agents_folder` contents + domain signals; user confirms via checklist. | `RosterResolver` + `RosterProposal` | PSC-specific (no standard equivalent) |
 | **Config** | Engine configuration: paths (agents_folder, workflows_folder, passports_folder), roster defaults/minimum/max/signals. | `Config` (frozen dataclass) + `ConfigReader` (YAML) | PSC-specific |
 | **Step Log** | The append-only audit trail of every state entry: `{step, agent, from_state, entry_count, attempt, uuid, timestamp, outcome_ref}`. The persisted history (what all engines keep); NOT surfaced to handlers. | `list[StepRecord]` in the passport | Temporal Event History; Camunda event stream; Step Functions execution history |
@@ -669,11 +670,12 @@ User Task (decision) states.
 }
 ```
 
-### 2.2 Passport — `passports/<TKT>.json`
+### 2.2 Passport — `passports/<subject>.json`
 
 ```jsonc
 {
-  "ticket_id": "TKT-0001",
+  "subject_id": "TKT-0001",
+  "subject_type": "ticket",
   "title": "Add BLE scan filter",
   "request": "<original instruction>",
   "requester": "user",
@@ -1435,19 +1437,19 @@ Phase 1 establishes layer boundaries; no adapter code until Phase 3.
 | Tool | Inputs | Returns | Deterministic computation |
 |------|--------|---------|----------------------------|
 | `load_workflow` | `workflow_id`, `version` | workflow object | Reads `workflows/<id>/<version>.json`. Pure load. |
-| `current_state` | `ticket_id` | `State` (with `__str__` + comparison) + `{phase, kind, is_decision_pending, pending_decision_schema, is_gate, retry_counts, review_round, parallel_progress}` | Reads passport; derives from `state.current` + workflow state def + `retries`/`parallel_progress`. |
-| `possible_outcomes` | `ticket_id` | list of `{outcome_key, schema_ref, agent, instruction, expected_outcomes}` | Looks up current state's `transitions`; for `parallel` resolves `$roster` from passport; for `decision_required` returns the decision schema + routing preview. |
-| `advance` | `ticket_id`, `outcome` (AgentOutcome) | `{new_state, next_agent, instruction, expected_outcomes, terminal, mirror_updated}` | (1) validate outcome against current state's `outcome_schema`; (2) if parallel, merge into `parallel_progress`, advance only when join satisfied; (3) compute target via `transitions[outcome.verdict]` or routing_rule for decision states; (4) update `step_log`/`outcomes`/`retries`/`loop_history`/`vars`; (5) regenerate Markdown mirror; (6) return next dispatch info. Rejects if schema invalid or precondition unmet (returns error list, no mutation). |
-| `route_for_outcome` | `ticket_id`, `outcome` | `{target, agent, instruction, expected_outcomes, loop?, skip[]?}` | Pure routing: same computation as advance step 3, **without mutating**. Used to preview before committing. |
-| `validate_passport` | `ticket_id` | `{valid: bool, errors: [...]}` | Invariants: every step in `step_log` has a stamp; every skip has justification; no `parallel_progress` pending when advancing; no missing-previous-step; retry budget not exceeded; mirror matches JSON. |
-| `record_decision` | `ticket_id`, `state`, `decision_object` | `{new_state, ...}` | Validates decision against `decision_schemas[state]`, appends to `decisions`, computes target via `routing_rules[state]` from decision fields, advances. |
-| `begin_gate` | `ticket_id`, `gate_state` | `{gate_id, tiers, retry_budget}` | Initialises retry tracking for that gate instance (idempotent). |
-| `gate_fail` | `ticket_id`, `gate_state`, `tier`, `findings`, `root_cause` | `{retry_available: bool, next_state, retries_used, exhausted: bool}` | Increments `retries[gate][tier]`; if `>= budget` → `ESCALATE`; else → loop-back target + requires `root_cause` in RC-1..RC-5. |
-| `aggregate_outcomes` | `ticket_id`, `state`, `outcomes[]` | composite outcome | Merges parallel outcomes per join rule (see §6). Does not advance. |
-| `query` | `ticket_id`, `what` | result set | Read-only filters over passport (`step_log`, `gate_history`, `decision_log`, `pending`). |
-| `migrate` | `ticket_id`, `target_version` | `{migrated: bool, incompatibilities[]}` | Only if compatible (same MAJOR or documented migration). In-flight migration is **not** auto; returns incompatibility list if breaking. |
-| `propose_roster` | `ticket_id`, `domain_signals` | `RosterProposal` | Reads `agents_folder`; proposes defaults + signal-matched specialists. |
-| `validate_roster` | `ticket_id`, `selection` | `{valid: bool, errors[]}` | Checks file existence in `agents_folder` + minimum + max. |
+| `current_state` | `subject_id` | `State` (with `__str__` + comparison) + `{phase, kind, is_decision_pending, pending_decision_schema, is_gate, retry_counts, review_round, parallel_progress}` | Reads passport; derives from `state.current` + workflow state def + `retries`/`parallel_progress`. |
+| `possible_outcomes` | `subject_id` | list of `{outcome_key, schema_ref, agent, instruction, expected_outcomes}` | Looks up current state's `transitions`; for `parallel` resolves `$roster` from passport; for `decision_required` returns the decision schema + routing preview. |
+| `advance` | `subject_id`, `outcome` (AgentOutcome) | `{new_state, next_agent, instruction, expected_outcomes, terminal, mirror_updated}` | (1) validate outcome against current state's `outcome_schema`; (2) if parallel, merge into `parallel_progress`, advance only when join satisfied; (3) compute target via `transitions[outcome.verdict]` or routing_rule for decision states; (4) update `step_log`/`outcomes`/`retries`/`loop_history`/`vars`; (5) regenerate Markdown mirror; (6) return next dispatch info. Rejects if schema invalid or precondition unmet (returns error list, no mutation). |
+| `route_for_outcome` | `subject_id`, `outcome` | `{target, agent, instruction, expected_outcomes, loop?, skip[]?}` | Pure routing: same computation as advance step 3, **without mutating**. Used to preview before committing. |
+| `validate_passport` | `subject_id` | `{valid: bool, errors: [...]}` | Invariants: every step in `step_log` has a stamp; every skip has justification; no `parallel_progress` pending when advancing; no missing-previous-step; retry budget not exceeded; mirror matches JSON. |
+| `record_decision` | `subject_id`, `state`, `decision_object` | `{new_state, ...}` | Validates decision against `decision_schemas[state]`, appends to `decisions`, computes target via `routing_rules[state]` from decision fields, advances. |
+| `begin_gate` | `subject_id`, `gate_state` | `{gate_id, tiers, retry_budget}` | Initialises retry tracking for that gate instance (idempotent). |
+| `gate_fail` | `subject_id`, `gate_state`, `tier`, `findings`, `root_cause` | `{retry_available: bool, next_state, retries_used, exhausted: bool}` | Increments `retries[gate][tier]`; if `>= budget` → `ESCALATE`; else → loop-back target + requires `root_cause` in RC-1..RC-5. |
+| `aggregate_outcomes` | `subject_id`, `state`, `outcomes[]` | composite outcome | Merges parallel outcomes per join rule (see §6). Does not advance. |
+| `query` | `subject_id`, `what` | result set | Read-only filters over passport (`step_log`, `gate_history`, `decision_log`, `pending`). |
+| `migrate` | `subject_id`, `target_version` | `{migrated: bool, incompatibilities[]}` | Only if compatible (same MAJOR or documented migration). In-flight migration is **not** auto; returns incompatibility list if breaking. |
+| `propose_roster` | `subject_id`, `domain_signals` | `RosterProposal` | Reads `agents_folder`; proposes defaults + signal-matched specialists. |
+| `validate_roster` | `subject_id`, `selection` | `{valid: bool, errors[]}` | Checks file existence in `agents_folder` + minimum + max. |
 
 ### 3.3 End-to-end test prototype (executable spec for §0.3)
 
@@ -1483,126 +1485,128 @@ def _outcome(step, agent, verdict="pass", **extra):
     )
 
 
-# --- HAPPY PATH: feature ticket A0 -> COMMIT ---
+# --- HAPPY PATH: feature subject (ticket) A0 -> COMMIT ---
 def test_happy_path_full_pipeline(svc):
-    tkt = svc.new_ticket(
+    subj = svc.new_subject(
         workflow_id="psc-main", version="2.0.0",
+        subject_type="ticket",
         title="add BLE scan filter",
         request="drop advs without mfr service UUID",
         domain_signals=["wireless", "security"],
     )
-    assert svc.current_state(tkt).state.name == "A0"
+    assert svc.current_state(subj).state.name == "A0"
 
     # A0: user confirms roster (defaults + wireless/security proposed)
-    proposal = svc.propose_roster(tkt)
-    ok, _ = svc.validate_roster(tkt, proposal.suggested)
+    proposal = svc.propose_roster(subj)
+    ok, _ = svc.validate_roster(subj, proposal.suggested)
     assert ok
-    svc.record_decision(tkt, "A0",
+    svc.record_decision(subj, "A0",
         {"roster": proposal.suggested, "rationale": "accepted proposal"})
-    assert svc.current_state(tkt).state.name == "A1"
-    assert svc.current_state(tkt).state.kind.value == "parallel"
+    assert svc.current_state(subj).state.name == "A1"
+    assert svc.current_state(subj).state.kind.value == "parallel"
 
     # A1: each specialist returns; advance doesn't fire until join satisfied
     for s in proposal.suggested:
-        r = svc.advance(tkt, _outcome(f"A1#{s}", s, verdict="pass"))
+        r = svc.advance(subj, _outcome(f"A1#{s}", s, verdict="pass"))
         assert r.advanced == (s == proposal.suggested[-1])
-    composite = svc.aggregate_outcomes(tkt, "A1")
+    composite = svc.aggregate_outcomes(subj, "A1")
     assert composite.verdict.value == "pass"
-    svc.advance(tkt, composite)
-    assert svc.current_state(tkt).state.name == "A2"
+    svc.advance(subj, composite)
+    assert svc.current_state(subj).state.name == "A2"
 
     # A2: primary + challenger (challenger disagrees -> needs_decision)
-    svc.advance(tkt, _outcome("A2#primary", "sw-engineer", "pass"))
-    svc.advance(tkt, _outcome("A2#challenger", "code-architect-challenger",
+    svc.advance(subj, _outcome("A2#primary", "sw-engineer", "pass"))
+    svc.advance(subj, _outcome("A2#challenger", "code-architect-challenger",
         "needs_decision", disagreements=["D1"], confidence=72))
-    svc.advance(tkt, svc.aggregate_outcomes(tkt, "A2"))
-    assert svc.current_state(tkt).state.name == "A2b"
+    svc.advance(subj, svc.aggregate_outcomes(subj, "A2"))
+    assert svc.current_state(subj).state.name == "A2b"
 
     # A2b -> A2c (decision_required, user dispositions)
-    svc.advance(tkt, _outcome("A2b", "pm", "pass"))
-    assert svc.current_state(tkt).is_decision_pending
-    svc.record_decision(tkt, "A2c",
+    svc.advance(subj, _outcome("A2b", "pm", "pass"))
+    assert svc.current_state(subj).is_decision_pending
+    svc.record_decision(subj, "A2c",
         {"findings": [{"finding_id": "F1", "disposition": "ACCEPT"}]})
-    assert svc.current_state(tkt).state.name == "A2a"   # ACCEPT -> ADR
+    assert svc.current_state(subj).state.name == "A2a"   # ACCEPT -> ADR
 
     # A2a -> A3 gate
-    svc.advance(tkt, _outcome("A2a", "code-architect", "pass",
+    svc.advance(subj, _outcome("A2a", "code-architect", "pass",
         deliverables=[{"type": "adr", "ref": "docs/adr/0001.md"}]))
-    assert svc.current_state(tkt).state.name == "A3"
-    assert svc.current_state(tkt).state.kind.value == "gate"
+    assert svc.current_state(subj).state.name == "A3"
+    assert svc.current_state(subj).state.kind.value == "gate"
 
     # A3 gate pass
-    svc.begin_gate(tkt, "A3")
-    svc.advance(tkt, _outcome("A3", "sw-engineer", "pass",
+    svc.begin_gate(subj, "A3")
+    svc.advance(subj, _outcome("A3", "sw-engineer", "pass",
         gate_result={"tier": "T3", "result": "pass"},
         gate_result_t_arch={"result": "pass"}))
-    assert svc.current_state(tkt).state.name == "B1"
+    assert svc.current_state(subj).state.name == "B1"
 
     # ... B1 -> B2 -> B2a (pass) -> B3 -> B3a (pass) -> C0 -> C1 -> C2 -> C3 -> C4 ...
     # (elided for brevity; same pattern)
-    svc.record_decision(tkt, "C4",
+    svc.record_decision(subj, "C4",
         {"decision": "complete", "rationale": "all green"})
-    assert svc.current_state(tkt).state.name == "CR1"
+    assert svc.current_state(subj).state.name == "CR1"
     # CR1 -> CR2 (accept) -> CR3 -> COMMIT
-    svc.advance(tkt, _outcome("CR1", "code-reviewer", "pass"))
-    svc.begin_gate(tkt, "CR2")
-    svc.advance(tkt, _outcome("CR2", "code-reviewer", "pass",
+    svc.advance(subj, _outcome("CR1", "code-reviewer", "pass"))
+    svc.begin_gate(subj, "CR2")
+    svc.advance(subj, _outcome("CR2", "code-reviewer", "pass",
         gate_result={"verdict": "APPROVED",
                      "blocking_findings_resolved": True}))
-    svc.advance(tkt, _outcome("CR3", "code-reviewer", "accepted"))
-    assert svc.current_state(tkt).state.name == "COMMIT"
-    assert svc.current_state(tkt).state.kind.value == "terminal"
+    svc.advance(subj, _outcome("CR3", "code-reviewer", "accepted"))
+    assert svc.current_state(subj).state.name == "COMMIT"
+    assert svc.current_state(subj).state.kind.value == "terminal"
 
 
 # --- UNHAPPY PATHS ---
-def test_unknown_ticket_returns_error(svc):
+def test_unknown_subject_returns_error(svc):
     r = svc.current_state("TKT-9999")
-    assert r.error == "ticket_not_found"
+    assert r.error == "subject_not_found"
 
 
 def test_ambiguous_instruction_loops_at_a0(svc):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "fix the thing",
-                          "fix the thing", [])
-    svc.advance(tkt, _outcome("A0", "supreme-leader", "needs_info"))
-    assert svc.current_state(tkt).state.name == "A0"   # stays, routes to pm
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket",
+                             "fix the thing", "fix the thing", [])
+    svc.advance(subj, _outcome("A0", "supreme-leader", "needs_info"))
+    assert svc.current_state(subj).state.name == "A0"   # stays, routes to pm
 
 
 def test_passport_missing(svc, tmp_path):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "x", "x", [])
-    (tmp_path / f"passports/{tkt}.json").unlink()
-    r = svc.current_state(tkt)
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket", "x", "x", [])
+    (tmp_path / f"passports/{subj}.json").unlink()
+    r = svc.current_state(subj)
     assert r.error == "passport_missing"
 
 
 def test_advance_rejects_when_parallel_pending(svc):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "x", "x", ["security"])
-    svc.record_decision(tkt, "A0",
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket", "x", "x",
+                             ["security"])
+    svc.record_decision(subj, "A0",
         {"roster": ["sw-engineer", "test-engineer", "docs-writer",
                      "security-reviewer"], "rationale": ""})
     # only 1 of 4 returns
-    r = svc.advance(tkt, _outcome("A1#sw-engineer", "sw-engineer", "pass"))
+    r = svc.advance(subj, _outcome("A1#sw-engineer", "sw-engineer", "pass"))
     assert r.advanced is False
     assert "parallel_pending" in r.errors
 
 
 def test_gate_fail_then_exhaust_then_escalate(svc):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "x", "x", [])
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket", "x", "x", [])
     # ... walk to A3 ...
-    svc.begin_gate(tkt, "A3")
+    svc.begin_gate(subj, "A3")
     for attempt in range(3):
-        r = svc.gate_fail(tkt, "A3", "T3", [{"id": "G1"}], root_cause="RC-2")
+        r = svc.gate_fail(subj, "A3", "T3", [{"id": "G1"}], root_cause="RC-2")
         assert r.retry_available == (attempt < 2)
-    assert svc.current_state(tkt).state.name == "ESCALATE"
-    assert svc.current_state(tkt).state.kind.value == "terminal"
+    assert svc.current_state(subj).state.name == "ESCALATE"
+    assert svc.current_state(subj).state.kind.value == "terminal"
 
 
 def test_decision_never_arrives_stays_put(svc):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "x", "x", [])
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket", "x", "x", [])
     # ... walk to A2c ...
-    assert svc.current_state(tkt).is_decision_pending
+    assert svc.current_state(subj).is_decision_pending
     # call current_state repeatedly; never auto-advances
     for _ in range(5):
-        assert svc.current_state(tkt).state.name == "A2c"
+        assert svc.current_state(subj).state.name == "A2c"
 
 
 def test_new_specialist_accepted_by_file_existence(svc, tmp_path):
@@ -1610,17 +1614,17 @@ def test_new_specialist_accepted_by_file_existence(svc, tmp_path):
     (tmp_path / "agents" / "bash-specialist.md").write_text("# bash specialist")
     proposal = svc.propose_roster_for_signals(["shell"])
     assert "bash-specialist" in proposal.available
-    ok, _ = svc.validate_roster(tkt=None,
+    ok, _ = svc.validate_roster(subject_id=None,
         selection=["sw-engineer", "test-engineer", "docs-writer",
                    "bash-specialist"])
     assert ok
 
 
 def test_state_comparison_forward_progress_dag(svc):
-    tkt = svc.new_ticket("psc-main", "2.0.0", "x", "x", [])
-    A0 = svc.current_state(tkt).state
+    subj = svc.new_subject("psc-main", "2.0.0", "ticket", "x", "x", [])
+    A0 = svc.current_state(subj).state
     # walk to A3 ...
-    A3 = svc.current_state(tkt).state
+    A3 = svc.current_state(subj).state
     assert A0 < A3
     assert A3 > A0
     assert not (A0 < A0)
@@ -1645,18 +1649,19 @@ logging.info(f"current state is {A0}")
 ### 4.1 Numbered list (instruction arrives at the Supreme Leader)
 
 1. Supreme Leader receives an instruction (user message or subagent return).
-2. **Has task?** Parse for a `TKT-####` reference.
+2. **Has task?** Parse for a `TKT-####` (or `SVY-####`, `PRC-####`, etc.)
+   reference.
    - None + new request → dispatch PM to create ticket (`psc new-ticket`);
      PM snapshots agents + workflow, writes `passports/<TKT>.json`
      (state=A0) + mirror.
    - References a missing ticket → unhappy path (§4.4 E2).
 3. `load_workflow(workflow_id, workflow_version)` from the passport's
    version pins.
-4. `current_state(ticket_id)` → `State` object (with `__str__` + comparison)
+4. `current_state(subject_id)` → `State` object (with `__str__` + comparison)
    + current state, kind, pending flags, retry counts, parallel progress.
 5. **Decision pending?** If `is_decision_pending` → do not dispatch; the
    decision must be supplied (by user or PM). Wait / request decision.
-6. `possible_outcomes(ticket_id)` → list of outcome keys + schemas + agent
+6. `possible_outcomes(subject_id)` → list of outcome keys + schemas + agent
    + instruction + expected_outcomes.
 7. **Parallel?** If `kind=parallel` → dispatch each specialist subagent in
    parallel with a dispatch envelope containing the outcome schema.
@@ -1665,7 +1670,7 @@ logging.info(f"current state is {A0}")
 9. **Task?** Dispatch the single bound agent with instruction + outcome
    schema; await outcome JSON.
 10. Agent returns AgentOutcome. Supreme Leader calls
-    `advance(ticket_id, outcome)`.
+    `advance(subject_id, outcome)`.
 11. `advance` validates against schema, records, computes next state,
     regenerates mirror, returns
     `{new_state, next_agent, instruction, expected_outcomes, terminal}`.
@@ -1710,9 +1715,10 @@ flowchart TD
 
 ### 4.3 Happy path — clean new feature
 
-1. User issues request → Supreme Leader sees no `TKT-####` → dispatches PM
-   to create ticket; PM runs `psc new-ticket --workflow=psc-main`, snapshots
-   agents + workflow into the ticket dir, writes `passports/TKT-0001.json`
+1. User issues request → Supreme Leader sees no `TKT-####` (or other subject
+   prefix) → dispatches PM to create subject; PM runs
+   `psc new-subject --workflow=psc-main`, snapshots
+   agents + workflow into the subject dir, writes `passports/TKT-0001.json`
    (state=A0) + mirror.
 2. `current_state` → A0 (task, agent=supreme-leader). Supreme Leader
    classifies domain → proposes roster via `propose_roster` (reads
@@ -1738,7 +1744,7 @@ flowchart TD
 
 | Case | Trigger | State machine returns | Supreme Leader action |
 |------|---------|-----------------------|-----------------------|
-| **E2 Unknown ticket** | Instruction cites `TKT-0099` that doesn't exist | `{error:"ticket_not_found"}` | Halt; ask user to confirm new vs typo; PM creates if new |
+| **E2 Unknown subject** | Instruction cites `TKT-0099` that doesn't exist | `{error:"subject_not_found"}` | Halt; ask user to confirm new vs typo; PM creates if new |
 | **E3 Ambiguous instruction** | No TKT ref + request unclear | A0 stays; outcome `verdict:needs_clarification` → next_agent=pm | PM asks user; loops at A0 until clarified |
 | **E4 Passport missing** | TKT exists, JSON absent | `{error:"passport_missing"}` | Halt; PM restores from git/mirror or recreates (recorded decision); no work proceeds |
 | **E5 Prior step unstamped** | `validate_passport` finds a missing stamp or non-empty `pending` at advance time | `advance` returns `{valid:false, errors:["step_unstamped:A1","parallel_pending:test"]}` — **no mutation** | Re-dispatch the missing specialist or stamp; state unchanged |
@@ -2092,9 +2098,9 @@ higher residual risk in exchange for velocity, but never zero confidence.
 
 | Phase | Build | Shippable test | Depends on |
 |-------|-------|----------------|------------|
-| **1 — Schemas + library core** | JSON Schemas (workflow, passport, AgentOutcome, decisions, discriminated-union verdicts). `psc_engine` domain layer: `State`, `StateRegistry`, `Context`, `ConfigReader`, `RosterResolver`, `StepWriter`, `StepRecord`. Storage protocols (`TicketStore`, `EventStore`, `WorkflowDefinitionStore`). `psc` CLI for `validate`. `pyproject.toml` (uv) + PyYAML dep. | Schema validation + invariants green on fixtures | — |
+| **1 — Schemas + library core** | JSON Schemas (workflow, passport, AgentOutcome, decisions, discriminated-union verdicts). `psc_engine` domain layer: `State`, `StateRegistry`, `Context`, `ConfigReader`, `RosterResolver`, `StepWriter`, `StepRecord`. Storage protocols (`SubjectStore`, `EventStore`, `WorkflowDefinitionStore`). `psc` CLI for `validate`. `pyproject.toml` (uv) + PyYAML dep. | Schema validation + invariants green on fixtures | — |
 | **2 — State machine + gates + decisions** (riskiest) | `advance`, `route_for_outcome`, `begin_gate`, `gate_fail` (retry vs loop-back), `record_decision` + routing rules, `aggregate_outcomes` + join, `migrate`. Application layer use-cases. Input/output validation per state (§2.7). | Exhaustive transition-table tests (every row of §7) + property tests (retries never exceed budget; parallel never advances with pending; decision state never auto-advances; mirror matches JSON; state comparison via forward-progress DAG; discriminated-union validation) | Phase 1 |
-| **3 — Backends + MCP/CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Concrete store implementations: `JsonTicketStore`, `SqliteTicketStore`, `PostgresTicketStore`. Claim/lease/reaper (§12). `StepWriter` + `StepRecord` (§13). Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §15.1). | Manual A0→A1 dispatch round-trip through MCP / CLI; restart-resume test; concurrent-claim test; store-backend swap test (same domain logic, different backend) | Phase 2 |
+| **3 — Backends + MCP/CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Concrete store implementations: `JsonSubjectStore`, `SqliteSubjectStore`, `PostgresSubjectStore`. Claim/lease/reaper (§12). `StepWriter` + `StepRecord` (§13). Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §15.1). | Manual A0→A1 dispatch round-trip through MCP / CLI; restart-resume test; concurrent-claim test; store-backend swap test (same domain logic, different backend) | Phase 2 |
 | **4 — Parallel aggregation wiring** | Real A1/C1/C2 fan-out; dispatch envelope generator; `parallel_progress` recovery (re-dispatch a single crashed specialist by step ID) | 3-specialist fan-out where one fails completes only after re-dispatch | Phase 3 |
 | **5 — Adhoc workflow + lifecycle** | `psc-adhoc` workflow definition + tests; `migrate` compatibility; DEPRECATED lifecycle (max 2 MAJOR, 90-day grace) | `psc-main` ticket cannot migrate across MAJOR without incompatibility report; `psc-adhoc` runs end-to-end | Phases 1–4 |
 
@@ -2173,6 +2179,27 @@ This follows the **dependency inversion** principle of clean architecture:
 the domain layer defines the interface it needs; the infrastructure layer
 implements it for each backend.
 
+#### Generalisation: the "subject"
+
+A workflow tracks a **subject** through its states. The subject is the
+entity the workflow is about — it may be a **ticket** (`TKT-0001`), a
+**survey** (`SVY-0001`), a **process** (`PRC-0001`), a **review**
+(`REV-0001`), or any other entity type. The store, the passport, and the
+API use the generic term `subject_id`; the concrete ID prefix is a property
+of the workflow definition, not the engine. The engine is agnostic to the
+subject type — it tracks state, not domain semantics.
+
+| Subject type | ID format | Example workflow |
+|--------------|-----------|------------------|
+| Ticket | `TKT-####` | `psc-main`, `psc-adhoc` |
+| Survey | `SVY-####` | `survey-workflow` (future) |
+| Process | `PRC-####` | `process-workflow` (future) |
+| Review | `REV-####` | `review-workflow` (future) |
+
+The `subject_type` is declared in the workflow definition
+(`"subject_type": "ticket"`) and used only for the Markdown mirror's
+human-readable labels. The engine treats all subjects uniformly.
+
 #### The storage protocol
 
 ```python
@@ -2181,60 +2208,62 @@ from typing import Protocol
 from uuid import UUID
 
 
-class TicketStore(Protocol):
-    """Protocol for ticket persistence. Implementations: JSON, SQLite, PG."""
+class SubjectStore(Protocol):
+    """Protocol for subject persistence (ticket, survey, process, etc.).
+    The engine is agnostic to the subject type — it tracks state, not
+    domain semantics. Implementations: JSON, SQLite, PostgreSQL."""
 
-    def load(self, ticket_id: str) -> dict | None:
-        """Load a ticket's passport JSON. Return None if not found."""
+    def load(self, subject_id: str) -> dict | None:
+        """Load a subject's passport JSON. Return None if not found."""
         ...
 
-    def save(self, ticket_id: str, passport_json: str,
-             current_steps: list[str], version: int) -> int:
+    def save(self, subject_id: str, passport_json: str,
+             active_steps: list[str], version: int) -> int:
         """Save the passport. Returns the new version (CAS).
         Raises OptimisticConcurrencyError if version mismatch."""
         ...
 
     def load_inflight(self) -> list[tuple[str, str, list[str]]]:
-        """Load all non-terminal tickets.
-        Returns list of (ticket_id, passport_json, active_steps)."""
+        """Load all non-terminal subjects.
+        Returns list of (subject_id, passport_json, active_steps)."""
         ...
 
-    def claim(self, ticket_id: str, session_id: str,
+    def claim(self, subject_id: str, session_id: str,
               lease_ttl_seconds: int = 300) -> bool:
-        """Atomically claim a ticket for this session, only if unclaimed.
+        """Atomically claim a subject for this session, only if unclaimed.
         Returns True if the claim succeeded."""
         ...
 
-    def release(self, ticket_id: str, session_id: str) -> bool: ...
+    def release(self, subject_id: str, session_id: str) -> bool: ...
     def reap_stale_claims(self, lease_ttl_seconds: int = 300) -> int: ...
 
 
 class EventStore(Protocol):
     """Protocol for the append-only step-event log (mandatory)."""
 
-    def append(self, ticket_id: str, step: str, agent: str,
+    def append(self, subject_id: str, step: str, agent: str,
                from_state: str | None, verdict: str,
                outcome_ref: str, uuid: UUID) -> None:
         """Append a step event. Must be in the same transaction as the
-        ticket save."""
+        subject save."""
         ...
 
-    def load_events(self, ticket_id: str) -> list[dict]:
-        """Load all step events for a ticket, ordered by UUIDv7 (chronological)."""
+    def load_events(self, subject_id: str) -> list[dict]:
+        """Load all step events for a subject, ordered by UUIDv7 (chronological)."""
         ...
 
 
 class WorkflowDefinitionStore(Protocol):
-    """Protocol for workflow definition storage (snapshotted per ticket)."""
+    """Protocol for workflow definition storage (snapshotted per subject)."""
 
     def load_definition(self, workflow_id: str, version: str) -> dict: ...
     def save_definition(self, workflow_id: str, version: str,
                         definition_json: str) -> None: ...
 ```
 
-#### Why `current_steps` (plural) not `current_step`
+#### Why `active_steps` (plural) not `current_step`
 
-A ticket in a `parallel` state (A1, A2, C1, C2) is at **multiple steps
+A subject in a `parallel` state (A1, A2, C1, C2) is at **multiple steps
 simultaneously** — e.g. `A1#security`, `A1#test`, `A1#docs`. The table stores
 `active_steps` (a JSON array), not a single `current_step`. The passport's
 `state.current` tracks the parent state (A1); `parallel_progress` tracks
@@ -2244,10 +2273,11 @@ the full parallel fan-out.
 #### SQLite implementation (one concrete backend)
 
 ```sql
-CREATE TABLE tickets (
-    id              TEXT PRIMARY KEY,          -- "TKT-0001"
+CREATE TABLE subjects (
+    id              TEXT PRIMARY KEY,          -- "TKT-0001" or "SVY-0001"
     workflow_id     TEXT NOT NULL,             -- "psc-main"
     workflow_version TEXT NOT NULL,            -- "2.0.0"
+    subject_type    TEXT NOT NULL DEFAULT 'ticket', -- "ticket"|"survey"|"process"|"review"
     active_steps    TEXT NOT NULL DEFAULT '[]', -- JSON array: ["A1#security","A1#test"]
     state_json      TEXT NOT NULL,             -- the full passport JSON
     claimed_by      TEXT,                      -- session id of the current owner
@@ -2264,10 +2294,10 @@ CREATE TABLE workflow_definitions (
 );
 
 -- Mandatory: append-only step-event log (Temporal-style audit history).
--- Written in the SAME transaction as each ticket save.
+-- Written in the SAME transaction as each subject save.
 CREATE TABLE events (
     uuid        TEXT PRIMARY KEY,              -- UUIDv7 (time-ordered, sortable)
-    ticket_id   TEXT NOT NULL REFERENCES tickets(id),
+    subject_id  TEXT NOT NULL REFERENCES subjects(id),
     step        TEXT NOT NULL,                 -- "A1#security"
     agent       TEXT,
     from_state  TEXT,
@@ -2275,7 +2305,7 @@ CREATE TABLE events (
     outcome_ref TEXT,                           -- path to the AgentOutcome JSON
     timestamp   TEXT NOT NULL
 );
-CREATE INDEX idx_events_ticket ON events(ticket_id, uuid);
+CREATE INDEX idx_events_subject ON events(subject_id, uuid);
 ```
 
 **WAL mode** (`PRAGMA journal_mode=WAL`) gives concurrent readers + a
@@ -2290,19 +2320,19 @@ processes to be on the same host — acceptable for a single-file engine.
 import sqlite3, json
 from pathlib import Path
 
-class SqliteTicketStore:
-    """Concrete implementation of TicketStore + EventStore for SQLite."""
+class SqliteSubjectStore:
+    """Concrete implementation of SubjectStore + EventStore for SQLite."""
 
     def __init__(self, db_path: Path):
         self._db_path = db_path
 
     def load_inflight(self) -> list[tuple[str, str, list[str]]]:
-        """Load all non-terminal tickets and their active parallel steps.
-        Returns list of (ticket_id, passport_json, active_steps)."""
+        """Load all non-terminal subjects and their active parallel steps.
+        Returns list of (subject_id, passport_json, active_steps)."""
         con = sqlite3.connect(self._db_path)
         con.row_factory = sqlite3.Row
         rows = con.execute(
-            "SELECT id, state_json, active_steps FROM tickets "
+            "SELECT id, state_json, active_steps FROM subjects "
             "WHERE active_steps NOT IN ('[\"COMMIT\"]', '[\"ESCALATE\"]', '[\"DEFERRED\"]')"
         ).fetchall()
         return [
@@ -2333,19 +2363,19 @@ there. The `events` table gives the mandatory audit trail.
 ## 12. Multi-Session Parallel Safety
 
 > **Question answered:** "If we have multiple sessions running in parallel,
-> how can we ensure they don't overlap or pick the same ticket to work on?"
+> how can we ensure they don't overlap or pick the same subject to work on?"
 
 ### The problem
 
 Multiple OpenCode sessions (or multiple Supreme Leader invocations) could
-read the same ticket from the JSON file and both start working on it. This
+read the same subject from the JSON file and both start working on it. This
 is the double-pickup problem. Every mature workflow engine solves it with a
 single serialization point: Camunda's partition leader, Temporal's
 server-mediated task queue, Step Functions' single-token-dispatch.
 
-### The solution — atomic CAS claim + lease via the `TicketStore` protocol
+### The solution — atomic CAS claim + lease via the `SubjectStore` protocol
 
-The `TicketStore` protocol (§11) defines `claim`/`release`/`reap_stale_claims`.
+The `SubjectStore` protocol (§11) defines `claim`/`release`/`reap_stale_claims`.
 Each backend implements the atomic CAS natively:
 
 - **SQLite:** `UPDATE ... WHERE claimed_by IS NULL` (single-statement CAS,
@@ -2359,12 +2389,12 @@ Each backend implements the atomic CAS natively:
 # psc_engine/infrastructure/sqlite_store.py
 import sqlite3, uuid, datetime
 
-class SqliteTicketStore:
-    # ... (implements TicketStore protocol from §11) ...
+class SqliteSubjectStore:
+    # ... (implements SubjectStore protocol from §11) ...
 
-    def claim(self, ticket_id: str, session_id: str,
+    def claim(self, subject_id: str, session_id: str,
               lease_ttl_seconds: int = 300) -> bool:
-        """Atomically claim a ticket for this session, only if unclaimed.
+        """Atomically claim a subject for this session, only if unclaimed.
         Returns True if the claim succeeded, False if another session got it.
         Mirrors Step Functions' single-token-dispatch and Camunda's
         leader-serialised job activation."""
@@ -2374,29 +2404,29 @@ class SqliteTicketStore:
                   - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
         cursor = con.execute(
             """
-            UPDATE tickets
+            UPDATE subjects
             SET claimed_by = ?, claimed_at = ?, version = version + 1
             WHERE id = ? AND (claimed_by IS NULL OR claimed_at < ?)
             """,
-            (session_id, now, ticket_id, cutoff)
+            (session_id, now, subject_id, cutoff)
         )
         con.commit()
         return cursor.rowcount == 1
 
-    def release(self, ticket_id: str, session_id: str) -> bool:
+    def release(self, subject_id: str, session_id: str) -> bool:
         """Release a claim (only if we own it). Used on clean completion."""
         con = sqlite3.connect(self._db_path)
         cursor = con.execute(
-            "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+            "UPDATE subjects SET claimed_by = NULL, claimed_at = NULL "
             "WHERE id = ? AND claimed_by = ?",
-            (ticket_id, session_id)
+            (subject_id, session_id)
         )
         con.commit()
         return cursor.rowcount == 1
 
-    def save(self, ticket_id: str, passport_json: str,
+    def save(self, subject_id: str, passport_json: str,
              active_steps: list[str], expected_version: int) -> int:
-        """Advance a claimed ticket's state with optimistic concurrency.
+        """Advance a claimed subject's state with optimistic concurrency.
         Fails if the version changed (another session modified it).
         Returns the new version."""
         import json
@@ -2404,17 +2434,17 @@ class SqliteTicketStore:
         now = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cursor = con.execute(
             """
-            UPDATE tickets
+            UPDATE subjects
             SET active_steps = ?, state_json = ?, version = version + 1,
                 updated_at = ?
             WHERE id = ? AND claimed_by = ? AND version = ?
             """,
             (json.dumps(active_steps), passport_json, now,
-             ticket_id, self._session_id, expected_version)
+             subject_id, self._session_id, expected_version)
         )
         con.commit()
         if cursor.rowcount == 0:
-            raise OptimisticConcurrencyError(ticket_id, expected_version)
+            raise OptimisticConcurrencyError(subject_id, expected_version)
         return expected_version + 1
 ```
 
@@ -2427,8 +2457,8 @@ Camunda's job timeout) is:
 1. **Claim with a lease TTL** (e.g. 5 minutes).
 2. **Heartbeat** — the owning session periodically refreshes `claimed_at`
    while still working.
-3. **Reaper** — a background process (or the next `claim_ticket` call)
-   releases tickets whose `claimed_at` is older than `now - TTL`. This
+3. **Reaper** — a background process (or the next `claim` call)
+   releases subjects whose `claimed_at` is older than `now - TTL`. This
    handles crashed sessions.
 
 ```python
@@ -2438,7 +2468,7 @@ Camunda's job timeout) is:
         cutoff = (datetime.datetime.now(datetime.timezone.utc)
                   - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
         cursor = con.execute(
-            "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+            "UPDATE subjects SET claimed_by = NULL, claimed_at = NULL "
             "WHERE claimed_at < ?", (cutoff,))
         con.commit()
         return cursor.rowcount
@@ -2464,7 +2494,7 @@ purposes:
   claimable, restart-survivable runtime state.
 
 On every `advance()`, the engine writes **both** via the injected
-`TicketStore`: the database row is updated (CAS) and the JSON file is
+`SubjectStore`: the database row is updated (CAS) and the JSON file is
 rewritten (under `flock`). If they diverge (e.g. JSON written but DB
 commit failed), the database row is authoritative for runtime decisions
 (claim, resume) and the JSON file is regenerated from it on next
@@ -2472,7 +2502,7 @@ commit failed), the database row is authoritative for runtime decisions
 
 The backend is selected at engine startup via configuration (e.g.
 `store: sqlite` or `store: postgresql` or `store: json`). The domain layer
-is unaware of which backend is in use — it only sees the `TicketStore` /
+is unaware of which backend is in use — it only sees the `SubjectStore` /
 `EventStore` / `WorkflowDefinitionStore` protocols.
 
 ---
@@ -2480,7 +2510,7 @@ is unaware of which backend is in use — it only sees the `TicketStore` /
 ## 13. Deterministic Step Writing
 
 > **Principle:** The agent does NOT decide where to write its outcome. A
-> class that is aware of the step identity and the ticket identity
+> class that is aware of the step identity and the subject identity
 > computes the storage path/id deterministically.
 
 ### Why — the engine-managed output binding pattern
@@ -2493,14 +2523,14 @@ established best practice, not an invention:
 | Camunda 8 | Engine, via BPMN element scope + output mappings | Element ID + process instance key | Return variables on `complete job` |
 | Temporal | Framework, via event history | Activity type + workflow run ID + event sequence | `return` a serializable value |
 | AWS Step Functions | Engine, via ASL state definition (`ResultPath`/`Output`) | State name + execution ARN | Return JSON from the task |
-| **PSC engine** | **A class aware of (step, ticket)** | **Step ID + ticket ID + UUIDv7** | **Agent produces content; placement is computed** |
+| **PSC engine** | **A class aware of (step, subject)** | **Step ID + subject ID + UUIDv7** | **Agent produces content; placement is computed** |
 
 In all three engines, the worker is a pure producer; placement is a
 deterministic function of step identity + run identity, owned by a layer
 above the agent. This pattern goes by several names:
 **engine-managed output binding**, **step-scoped artifact placement**,
 **deterministic output addressing**. It is NOT content-addressable storage
-(CAS keys by a hash of the content); it keys by *identity* (step + ticket),
+(CAS keys by a hash of the content); it keys by *identity* (step + subject),
 so two runs of the same step get different paths even if the content is
 identical.
 
@@ -2520,7 +2550,7 @@ class StepRecord:
     lexically sortable, collision-free across parallel agents per RFC 9562).
     Carries a reference to the AgentOutcome, not the outcome itself."""
     uuid: uuid.UUID           # UUIDv7 — time-ordered, sortable, unique
-    ticket_id: str            # "TKT-0001"
+    subject_id: str           # "TKT-0001" (or "SVY-0001", "PRC-0001", etc.)
     step: str                 # "A1#security" (per-specialist step ID)
     agent: str                # "security-specialist"
     from_state: str | None   # predecessor state name
@@ -2533,29 +2563,29 @@ class StepRecord:
 
 class StepWriter:
     """Determines WHERE a step's outcome gets written. The agent never
-    chooses the path; this class computes it from (ticket_id, step, uuid).
+    chooses the path; this class computes it from (subject_id, step, uuid).
     The agent only produces the AgentOutcome content; the StepWriter
     places it."""
 
     def __init__(self, outcomes_folder: Path):
         self._folder = outcomes_folder
 
-    def write(self, ticket_id: str, step: str, outcome: dict,
+    def write(self, subject_id: str, step: str, outcome: dict,
               agent: str, from_state: str | None, entry_count: int,
               attempt: int, verdict: str) -> StepRecord:
         """Write the outcome to a deterministic path and return the
-        StepRecord. The path is a pure function of (ticket, step, uuid)."""
+        StepRecord. The path is a pure function of (subject, step, uuid)."""
         step_uuid = uuid.uuid7()   # Python 3.14+ — RFC 9562 time-ordered
-        # Path: outcomes/<ticket>/<step>/<uuid>.json
+        # Path: outcomes/<subject>/<step>/<uuid>.json
         # step may contain '#' (per-specialist step ID) — sanitize for path
         safe_step = step.replace("#", "_")
-        path = self._folder / ticket_id / safe_step / f"{step_uuid}.json"
+        path = self._folder / subject_id / safe_step / f"{step_uuid}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(outcome, indent=2), encoding="utf-8")
         from datetime import datetime, timezone
         return StepRecord(
             uuid=step_uuid,
-            ticket_id=ticket_id,
+            subject_id=subject_id,
             step=step,
             agent=agent,
             from_state=from_state,
@@ -2574,9 +2604,9 @@ class StepWriter:
 ### The flow
 
 1. Agent returns an `AgentOutcome` (as text, via MCP or subagent return).
-2. The Supreme Leader calls `advance(ticket_id, outcome)`.
+2. The Supreme Leader calls `advance(subject_id, outcome)`.
 3. Inside `advance`, the `StepWriter` computes the deterministic path
-   `outcomes/<ticket>/<step>/<uuidv7>.json` and writes the outcome.
+   `outcomes/<subject>/<step>/<uuidv7>.json` and writes the outcome.
 4. The `StepRecord` (with `uuid`, `outcome_ref`) is appended to the
    passport's `step_log`.
 5. The agent never knew the path; it only produced content.
@@ -2666,7 +2696,7 @@ not observers).
 **Use path 1 (agent-instructed + StepWriter) as the mechanism.** The agent
 is told in its dispatch envelope to return its outcome as a JSON object
 (the `AgentOutcome` shape from §2.3). The Supreme Leader receives the
-outcome as text and calls `advance(ticket_id, outcome)`, which internally
+outcome as text and calls `advance(subject_id, outcome)`, which internally
 uses the `StepWriter` (§13) to place the outcome at a deterministic path.
 **The agent never writes a file; it only returns content.**
 
@@ -2706,8 +2736,8 @@ These are the loose ends to resolve before locking the design:
    does the user select from scratch (one-step, simpler but loses the
    signal-driven default)?
 7. **SQLite vs JSON-only** — the design presents both (§1.2 JSON
-   authoritative; §11 SQLite for persistence/concurrency). Confirm both are
-   required, or drop SQLite if multi-session safety is not a near-term
+   authoritative; §11 database for persistence/concurrency). Confirm both are
+   required, or drop the database if multi-session safety is not a near-term
    requirement.
 
 ---
