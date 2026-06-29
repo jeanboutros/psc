@@ -1172,6 +1172,238 @@ it selectable with no code or config change — it appears in
 `available_specialists()` and the user can add it at A0 even if no signal
 rule mentions it.
 
+### 2.7 Custom Inputs and Outputs per State
+
+Each state declares the inputs it requires and the outputs it produces.
+Outputs are carried forward to the next state via the `vars` blackboard
+(§1.8). The workflow definition can answer: "what input does step A3
+require?" and "what output will step A2c generate?" — this is introspectable
+metadata, not prose.
+
+#### Input/output declaration in the workflow JSON
+
+```jsonc
+"A2c": {
+  "name":"A2c","title":"Decision Register Presentation",
+  "phase":"A","step":4,"kind":"decision_required","agent":"user",
+  "decision_schema":"decision.user_disposition",
+  "routing_rule":"route.user_disposition",
+  "inputs": {
+    "required": ["findings"],            // what the state needs to run
+    "optional": ["synthesis_ref"]
+  },
+  "outputs": {
+    "produced": ["dispositions"],         // what the state writes to vars
+    "carried_forward": true               // outputs flow to next state's input
+  },
+  "transitions": {}
+}
+```
+
+- **`inputs.required`** — the keys that MUST be present in `ctx.input` or
+  `ctx.vars` for this state to execute. `advance` validates them before
+  dispatching; missing inputs → `STATUS: BLOCKED`.
+- **`inputs.optional`** — keys that enhance the state's work but are not
+  mandatory.
+- **`outputs.produced`** — the keys this state writes to `ctx.vars` on
+  completion. These become available to downstream states.
+- **`outputs.carried_forward`** — if true, the output is passed as the next
+  state's `ctx.input` (the ASL "output from the first state is passed as
+  input to the second" model).
+
+#### Verdict-conditional outputs (discriminated union)
+
+**Problem:** the output shape depends on the verdict. If the verdict is
+`approve`, a `note` field is required. If `reject`, a `reason` field is
+required. If `conditional_pass`, a `concerns` list is required. Each verdict
+carries different fields forward.
+
+**How this is usually implemented** — research across JSON Schema 2020-12,
+TypeScript, OpenAPI, and Pydantic v2 converges on the **discriminated
+union** pattern: a union of object types sharing a common `verdict` tag
+property. The verdict value selects which variant is in force. See §16
+references [35–39].
+
+Two paradigms exist:
+- **Schema-world** (JSON Schema, TS, OpenAPI, Pydantic): the *type/schema
+  itself* is a discriminated union; the verdict value selects the variant.
+- **Workflow-engine-world** (BPMN, ASL): the output is a flat envelope;
+  the *control flow* (gateway / Choice state) branches on the verdict.
+
+The PSC engine uses **both layers**: the schema is a discriminated union
+(so `advance` validates the output against the correct variant), and the
+transition table routes on the verdict tag.
+
+#### JSON Schema pattern — `oneOf` + `const` on the verdict
+
+```jsonc
+"outcome_schemas": {
+  "outcome.review_verdict": {
+    "type": "object",
+    "required": ["verdict"],
+    "properties": {
+      "verdict": { "enum": ["approve", "reject", "conditional_pass"] }
+    },
+    "oneOf": [
+      {
+        "properties": {
+          "verdict": { "const": "approve" },
+          "note":     { "type": "string" },
+          "links":    { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["verdict", "note"]
+      },
+      {
+        "properties": {
+          "verdict": { "const": "reject" },
+          "reason":  { "type": "string" }
+        },
+        "required": ["verdict", "reason"]
+      },
+      {
+        "properties": {
+          "verdict":   { "const": "conditional_pass" },
+          "concerns":  { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["verdict", "concerns"]
+      }
+    ]
+  }
+}
+```
+
+This is the canonical JSON Schema 2020-12 discriminated-union pattern
+(`oneOf` + `const` on the discriminant). `advance` validates the agent's
+outcome against this schema; if the verdict is `reject` but `reason` is
+missing, validation fails with no mutation.
+
+#### Pydantic v2 equivalent (reference implementation)
+
+```python
+# psc_engine/domain/outcomes.py
+from typing import Literal, Annotated, Union
+from pydantic import BaseModel, Field
+
+class ApproveOutcome(BaseModel):
+    verdict: Literal["approve"]
+    note: str
+    links: list[str] = []
+
+class RejectOutcome(BaseModel):
+    verdict: Literal["reject"]
+    reason: str
+
+class ConditionalPassOutcome(BaseModel):
+    verdict: Literal["conditional_pass"]
+    concerns: list[str]
+
+# Discriminated union — Pydantic selects one member based on the verdict tag.
+ReviewOutcome = Annotated[
+    Union[ApproveOutcome, RejectOutcome, ConditionalPassOutcome],
+    Field(discriminator="verdict"),
+]
+```
+
+Pydantic uses the `verdict` value to select one union member and validates
+only against it. The generated JSON Schema emits the OpenAPI `discriminator`
+annotation. See §16 reference [38] — Pydantic v2 docs, "Discriminated
+unions with string discriminators."
+
+#### How outputs relate to decisions
+
+The `decision_required` states (§1.3) use the same discriminated-union
+pattern for their decision objects. Each decision schema is a discriminated
+union on a `decision` tag:
+
+```jsonc
+"decision.c4_completion": {
+  "type": "object",
+  "required": ["decision"],
+  "oneOf": [
+    {
+      "properties": {
+        "decision":  { "const": "complete" },
+        "rationale": { "type": "string" }
+      },
+      "required": ["decision", "rationale"]
+    },
+    {
+      "properties": {
+        "decision":     { "const": "rework" },
+        "rationale":    { "type": "string" },
+        "rework_scope": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["decision", "rationale", "rework_scope"]
+    },
+    {
+      "properties": {
+        "decision":      { "const": "backlog_split" },
+        "rationale":     { "type": "string" },
+        "backlog_refs":  { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["decision", "rationale", "backlog_refs"]
+    },
+    {
+      "properties": {
+        "decision":  { "const": "escalate" },
+        "rationale": { "type": "string" }
+      },
+      "required": ["decision", "rationale"]
+    },
+    {
+      "properties": {
+        "decision":  { "const": "defer" },
+        "rationale": { "type": "string" },
+        "defer_until": { "type": "string" }
+      },
+      "required": ["decision", "rationale", "defer_until"]
+    },
+    {
+      "properties": {
+        "decision":   { "const": "add_tests" },
+        "rationale":  { "type": "string" },
+        "test_scope": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["decision", "rationale", "test_scope"]
+    }
+  ]
+}
+```
+
+Each decision variant carries the fields relevant to that choice:
+- `complete` → `rationale` (why we're closing)
+- `rework` → `rationale` + `rework_scope` (what to fix)
+- `backlog_split` → `rationale` + `backlog_refs` (new ticket IDs)
+- `escalate` → `rationale` (why we're escalating)
+- `defer` → `rationale` + `defer_until` (when to revisit)
+- `add_tests` → `rationale` + `test_scope` (what tests to add)
+
+The routing rule (`route.c4`) reads the `decision` tag and routes
+deterministically. The decision-specific fields are written to `ctx.vars`
+and carried forward to the downstream state's `ctx.input`.
+
+#### Introspection API
+
+The engine can answer "what inputs does step X require?" and "what outputs
+will step X produce?" by reading the workflow definition:
+
+```python
+def step_inputs(workflow: dict, step: str) -> dict:
+    """Return the required and optional inputs for a step."""
+    state = workflow["states"][step]
+    return state.get("inputs", {"required": [], "optional": []})
+
+def step_outputs(workflow: dict, step: str) -> dict:
+    """Return the outputs a step produces and whether they carry forward."""
+    state = workflow["states"][step]
+    return state.get("outputs", {"produced": [], "carried_forward": False})
+```
+
+This metadata is exposed via the `possible_outcomes` MCP/CLI tool so the
+Supreme Leader can tell an agent: "step A2c requires `findings` as input and
+will produce `dispositions` as output, validated against the
+`decision.user_disposition` discriminated-union schema."
+
 ---
 
 ## 3. The Python Library / CLI / MCP
@@ -1860,9 +2092,9 @@ higher residual risk in exchange for velocity, but never zero confidence.
 
 | Phase | Build | Shippable test | Depends on |
 |-------|-------|----------------|------------|
-| **1 — Schemas + library core** | JSON Schemas (workflow, passport, AgentOutcome, decisions). `psc_engine` domain layer: `State`, `StateRegistry`, `Context`, `ConfigReader`, `RosterResolver`. `psc` CLI for `validate`. `pyproject.toml` (uv) + PyYAML dep. | Schema validation + invariants green on fixtures | — |
-| **2 — State machine + gates + decisions** (riskiest) | `advance`, `route_for_outcome`, `begin_gate`, `gate_fail` (retry vs loop-back), `record_decision` + routing rules, `aggregate_outcomes` + join, `migrate`. Application layer use-cases. | Exhaustive transition-table tests (every row of §7) + property tests (retries never exceed budget; parallel never advances with pending; decision state never auto-advances; mirror matches JSON; state comparison via forward-progress DAG) | Phase 1 |
-| **3 — MCP server + CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §15.1). SQLite store adapter + persistence (§11) + claim/lease (§12). `StepWriter` + `StepRecord` (§13). | Manual A0→A1 dispatch round-trip through MCP / CLI; restart-resume test; concurrent-claim test | Phase 2 |
+| **1 — Schemas + library core** | JSON Schemas (workflow, passport, AgentOutcome, decisions, discriminated-union verdicts). `psc_engine` domain layer: `State`, `StateRegistry`, `Context`, `ConfigReader`, `RosterResolver`, `StepWriter`, `StepRecord`. Storage protocols (`TicketStore`, `EventStore`, `WorkflowDefinitionStore`). `psc` CLI for `validate`. `pyproject.toml` (uv) + PyYAML dep. | Schema validation + invariants green on fixtures | — |
+| **2 — State machine + gates + decisions** (riskiest) | `advance`, `route_for_outcome`, `begin_gate`, `gate_fail` (retry vs loop-back), `record_decision` + routing rules, `aggregate_outcomes` + join, `migrate`. Application layer use-cases. Input/output validation per state (§2.7). | Exhaustive transition-table tests (every row of §7) + property tests (retries never exceed budget; parallel never advances with pending; decision state never auto-advances; mirror matches JSON; state comparison via forward-progress DAG; discriminated-union validation) | Phase 1 |
+| **3 — Backends + MCP/CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Concrete store implementations: `JsonTicketStore`, `SqliteTicketStore`, `PostgresTicketStore`. Claim/lease/reaper (§12). `StepWriter` + `StepRecord` (§13). Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §15.1). | Manual A0→A1 dispatch round-trip through MCP / CLI; restart-resume test; concurrent-claim test; store-backend swap test (same domain logic, different backend) | Phase 2 |
 | **4 — Parallel aggregation wiring** | Real A1/C1/C2 fan-out; dispatch envelope generator; `parallel_progress` recovery (re-dispatch a single crashed specialist by step ID) | 3-specialist fan-out where one fails completes only after re-dispatch | Phase 3 |
 | **5 — Adhoc workflow + lifecycle** | `psc-adhoc` workflow definition + tests; `migrate` compatibility; DEPRECATED lifecycle (max 2 MAJOR, 90-day grace) | `psc-main` ticket cannot migrate across MAJOR without incompatibility report; `psc-adhoc` runs end-to-end | Phases 1–4 |
 
@@ -1928,19 +2160,95 @@ Items 1–4 fit naturally into the passport itself; item 5 is an
 engine-level concern. This is the Step Functions model, and it is the
 minimal viable set.
 
-### Storage — SQLite WAL, single writer
+### Storage — protocol-based, multi-backend
 
 The JSON passport remains the authoritative source-of-truth (§1.2). For
-persistence across process restarts, the engine writes a **snapshot row**
-to a SQLite database in **WAL mode** alongside the JSON file:
+persistence across process restarts and multi-session safety, the engine
+defines **storage protocols** (Python `Protocol` classes / ABC interfaces)
+and provides concrete implementations for JSON files, SQLite, and
+PostgreSQL. The domain layer depends only on the protocol; the concrete
+backend is injected at runtime.
+
+This follows the **dependency inversion** principle of clean architecture:
+the domain layer defines the interface it needs; the infrastructure layer
+implements it for each backend.
+
+#### The storage protocol
+
+```python
+# psc_engine/domain/store.py
+from typing import Protocol
+from uuid import UUID
+
+
+class TicketStore(Protocol):
+    """Protocol for ticket persistence. Implementations: JSON, SQLite, PG."""
+
+    def load(self, ticket_id: str) -> dict | None:
+        """Load a ticket's passport JSON. Return None if not found."""
+        ...
+
+    def save(self, ticket_id: str, passport_json: str,
+             current_steps: list[str], version: int) -> int:
+        """Save the passport. Returns the new version (CAS).
+        Raises OptimisticConcurrencyError if version mismatch."""
+        ...
+
+    def load_inflight(self) -> list[tuple[str, str, list[str]]]:
+        """Load all non-terminal tickets.
+        Returns list of (ticket_id, passport_json, active_steps)."""
+        ...
+
+    def claim(self, ticket_id: str, session_id: str,
+              lease_ttl_seconds: int = 300) -> bool:
+        """Atomically claim a ticket for this session, only if unclaimed.
+        Returns True if the claim succeeded."""
+        ...
+
+    def release(self, ticket_id: str, session_id: str) -> bool: ...
+    def reap_stale_claims(self, lease_ttl_seconds: int = 300) -> int: ...
+
+
+class EventStore(Protocol):
+    """Protocol for the append-only step-event log (mandatory)."""
+
+    def append(self, ticket_id: str, step: str, agent: str,
+               from_state: str | None, verdict: str,
+               outcome_ref: str, uuid: UUID) -> None:
+        """Append a step event. Must be in the same transaction as the
+        ticket save."""
+        ...
+
+    def load_events(self, ticket_id: str) -> list[dict]:
+        """Load all step events for a ticket, ordered by UUIDv7 (chronological)."""
+        ...
+
+
+class WorkflowDefinitionStore(Protocol):
+    """Protocol for workflow definition storage (snapshotted per ticket)."""
+
+    def load_definition(self, workflow_id: str, version: str) -> dict: ...
+    def save_definition(self, workflow_id: str, version: str,
+                        definition_json: str) -> None: ...
+```
+
+#### Why `current_steps` (plural) not `current_step`
+
+A ticket in a `parallel` state (A1, A2, C1, C2) is at **multiple steps
+simultaneously** — e.g. `A1#security`, `A1#test`, `A1#docs`. The table stores
+`active_steps` (a JSON array), not a single `current_step`. The passport's
+`state.current` tracks the parent state (A1); `parallel_progress` tracks
+the per-specialist sub-states. Reload reads `active_steps` to reconstruct
+the full parallel fan-out.
+
+#### SQLite implementation (one concrete backend)
 
 ```sql
--- One row per ticket; state_json holds the passport serialized as JSON.
 CREATE TABLE tickets (
     id              TEXT PRIMARY KEY,          -- "TKT-0001"
     workflow_id     TEXT NOT NULL,             -- "psc-main"
     workflow_version TEXT NOT NULL,            -- "2.0.0"
-    current_step    TEXT NOT NULL,             -- "A3"
+    active_steps    TEXT NOT NULL DEFAULT '[]', -- JSON array: ["A1#security","A1#test"]
     state_json      TEXT NOT NULL,             -- the full passport JSON
     claimed_by      TEXT,                      -- session id of the current owner
     claimed_at      TEXT,                      -- ISO timestamp of the claim
@@ -1948,8 +2256,6 @@ CREATE TABLE tickets (
     updated_at      TEXT NOT NULL              -- ISO timestamp
 );
 
--- The workflow definition is snapshotted separately so running tickets
--- are pinned to the definition they started with.
 CREATE TABLE workflow_definitions (
     id          TEXT NOT NULL,                  -- "psc-main"
     version     TEXT NOT NULL,                  -- "2.0.0"
@@ -1957,19 +2263,19 @@ CREATE TABLE workflow_definitions (
     PRIMARY KEY (id, version)
 );
 
--- Optional: append-only event log for audit (Temporal-style history
--- without the cost of full replay). Written in the same transaction as
--- each snapshot update.
+-- Mandatory: append-only step-event log (Temporal-style audit history).
+-- Written in the SAME transaction as each ticket save.
 CREATE TABLE events (
-    uuid        TEXT PRIMARY KEY,              -- UUIDv7 (time-ordered)
+    uuid        TEXT PRIMARY KEY,              -- UUIDv7 (time-ordered, sortable)
     ticket_id   TEXT NOT NULL REFERENCES tickets(id),
-    step        TEXT NOT NULL,
+    step        TEXT NOT NULL,                 -- "A1#security"
     agent       TEXT,
     from_state  TEXT,
     verdict     TEXT,
     outcome_ref TEXT,                           -- path to the AgentOutcome JSON
     timestamp   TEXT NOT NULL
 );
+CREATE INDEX idx_events_ticket ON events(ticket_id, uuid);
 ```
 
 **WAL mode** (`PRAGMA journal_mode=WAL`) gives concurrent readers + a
@@ -1977,29 +2283,38 @@ single writer without readers blocking writers. SQLite WAL requires all
 processes to be on the same host — acceptable for a single-file engine.
 `PRAGMA synchronous=NORMAL` gives good performance with WAL.
 
-### Reload — resume at `current_step` with `state_json`
-
-On engine restart:
+#### Reload — resume at `active_steps` with `state_json`
 
 ```python
 # psc_engine/infrastructure/sqlite_store.py
 import sqlite3, json
+from pathlib import Path
 
-def load_inflight_tickets(db_path: Path) -> list[Passport]:
-    """Load all non-terminal tickets and resume each at its current_step."""
-    con = sqlite3.connect(db_path)
-    con.row_factory = sqlite3.Row
-    rows = con.execute(
-        "SELECT id, state_json, current_step FROM tickets "
-        "WHERE current_step NOT IN ('COMMIT', 'ESCALATE', 'DEFERRED')"
-    ).fetchall()
-    return [Passport.from_json(row["state_json"]) for row in rows]
+class SqliteTicketStore:
+    """Concrete implementation of TicketStore + EventStore for SQLite."""
+
+    def __init__(self, db_path: Path):
+        self._db_path = db_path
+
+    def load_inflight(self) -> list[tuple[str, str, list[str]]]:
+        """Load all non-terminal tickets and their active parallel steps.
+        Returns list of (ticket_id, passport_json, active_steps)."""
+        con = sqlite3.connect(self._db_path)
+        con.row_factory = sqlite3.Row
+        rows = con.execute(
+            "SELECT id, state_json, active_steps FROM tickets "
+            "WHERE active_steps NOT IN ('[\"COMMIT\"]', '[\"ESCALATE\"]', '[\"DEFERRED\"]')"
+        ).fetchall()
+        return [
+            (row["id"], row["state_json"], json.loads(row["active_steps"]))
+            for row in rows
+        ]
 ```
 
 This is the Step Functions snapshot model: `SELECT` the row, resume at
-`current_step` with the `state_json` passport. No replay, no
-re-execution of completed states. The optional `events` table provides
-Temporal-style audit history without the cost of full replay.
+`active_steps` (the full parallel fan-out) with the `state_json` passport.
+No replay, no re-execution of completed states. The `events` table
+provides Temporal-style audit history.
 
 ### Why not pure event sourcing?
 
@@ -2011,7 +2326,7 @@ history. For an LLM-agent pipeline where the "workflow code" is the
 state machine (deterministic) but the "activity" is an LLM call (not
 deterministic), pure event sourcing adds complexity without payoff. The
 snapshot model captures the LLM's output in the passport and resumes from
-there. The optional `events` table gives the audit trail if needed.
+there. The `events` table gives the mandatory audit trail.
 
 ---
 
@@ -2028,68 +2343,79 @@ is the double-pickup problem. Every mature workflow engine solves it with a
 single serialization point: Camunda's partition leader, Temporal's
 server-mediated task queue, Step Functions' single-token-dispatch.
 
-### The solution — atomic CAS claim + lease
+### The solution — atomic CAS claim + lease via the `TicketStore` protocol
 
-For a SQLite-backed engine, the canonical pattern is an **atomic
-compare-and-swap (CAS) update** — a single statement that the SQLite writer
-lock serialises:
+The `TicketStore` protocol (§11) defines `claim`/`release`/`reap_stale_claims`.
+Each backend implements the atomic CAS natively:
+
+- **SQLite:** `UPDATE ... WHERE claimed_by IS NULL` (single-statement CAS,
+  serialised by the writer lock).
+- **PostgreSQL:** `UPDATE ... WHERE claimed_by IS NULL` with
+  `SELECT ... FOR UPDATE` if pessimistic locking is preferred (PG has row-
+  level locks, unlike SQLite).
+- **JSON file:** `flock` + atomic read-modify-write under the advisory lock.
 
 ```python
 # psc_engine/infrastructure/sqlite_store.py
 import sqlite3, uuid, datetime
 
-def claim_ticket(db_path: Path, ticket_id: str, session_id: str,
-                 lease_ttl_seconds: int = 300) -> bool:
-    """Atomically claim a ticket for this session, only if unclaimed.
-    Returns True if the claim succeeded, False if another session got it.
-    Mirrors Step Functions' single-token-dispatch and Camunda's
-    leader-serialised job activation."""
-    con = sqlite3.connect(db_path)
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    cursor = con.execute(
-        """
-        UPDATE tickets
-        SET claimed_by = ?, claimed_at = ?, version = version + 1
-        WHERE id = ? AND (claimed_by IS NULL OR claimed_at < ?)
-        """,
-        (session_id, now, ticket_id,
-         (datetime.datetime.now(datetime.timezone.utc)
-          - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat())
-    )
-    con.commit()
-    return cursor.rowcount == 1   # 1 row changed → we won the claim
+class SqliteTicketStore:
+    # ... (implements TicketStore protocol from §11) ...
 
+    def claim(self, ticket_id: str, session_id: str,
+              lease_ttl_seconds: int = 300) -> bool:
+        """Atomically claim a ticket for this session, only if unclaimed.
+        Returns True if the claim succeeded, False if another session got it.
+        Mirrors Step Functions' single-token-dispatch and Camunda's
+        leader-serialised job activation."""
+        con = sqlite3.connect(self._db_path)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cutoff = (datetime.datetime.now(datetime.timezone.utc)
+                  - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
+        cursor = con.execute(
+            """
+            UPDATE tickets
+            SET claimed_by = ?, claimed_at = ?, version = version + 1
+            WHERE id = ? AND (claimed_by IS NULL OR claimed_at < ?)
+            """,
+            (session_id, now, ticket_id, cutoff)
+        )
+        con.commit()
+        return cursor.rowcount == 1
 
-def release_ticket(db_path: Path, ticket_id: str, session_id: str) -> bool:
-    """Release a claim (only if we own it). Used on clean completion."""
-    con = sqlite3.connect(db_path)
-    cursor = con.execute(
-        "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
-        "WHERE id = ? AND claimed_by = ?",
-        (ticket_id, session_id)
-    )
-    con.commit()
-    return cursor.rowcount == 1
+    def release(self, ticket_id: str, session_id: str) -> bool:
+        """Release a claim (only if we own it). Used on clean completion."""
+        con = sqlite3.connect(self._db_path)
+        cursor = con.execute(
+            "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+            "WHERE id = ? AND claimed_by = ?",
+            (ticket_id, session_id)
+        )
+        con.commit()
+        return cursor.rowcount == 1
 
-
-def advance_state(db_path: Path, ticket_id: str, session_id: str,
-                  expected_version: int, new_step: str,
-                  new_state_json: str) -> bool:
-    """Advance a claimed ticket's state with optimistic concurrency.
-    Fails if the version changed (another session modified it)."""
-    con = sqlite3.connect(db_path)
-    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
-    cursor = con.execute(
-        """
-        UPDATE tickets
-        SET current_step = ?, state_json = ?, version = version + 1,
-            updated_at = ?
-        WHERE id = ? AND claimed_by = ? AND version = ?
-        """,
-        (new_step, new_state_json, now, ticket_id, session_id, expected_version)
-    )
-    con.commit()
-    return cursor.rowcount == 1
+    def save(self, ticket_id: str, passport_json: str,
+             active_steps: list[str], expected_version: int) -> int:
+        """Advance a claimed ticket's state with optimistic concurrency.
+        Fails if the version changed (another session modified it).
+        Returns the new version."""
+        import json
+        con = sqlite3.connect(self._db_path)
+        now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor = con.execute(
+            """
+            UPDATE tickets
+            SET active_steps = ?, state_json = ?, version = version + 1,
+                updated_at = ?
+            WHERE id = ? AND claimed_by = ? AND version = ?
+            """,
+            (json.dumps(active_steps), passport_json, now,
+             ticket_id, self._session_id, expected_version)
+        )
+        con.commit()
+        if cursor.rowcount == 0:
+            raise OptimisticConcurrencyError(ticket_id, expected_version)
+        return expected_version + 1
 ```
 
 ### Lease + reaper (crashed-session recovery)
@@ -2106,16 +2432,16 @@ Camunda's job timeout) is:
    handles crashed sessions.
 
 ```python
-def reap_stale_claims(db_path: Path, lease_ttl_seconds: int = 300) -> int:
-    """Release all claims older than the TTL. Returns count reaped."""
-    con = sqlite3.connect(db_path)
-    cutoff = (datetime.datetime.now(datetime.timezone.utc)
-              - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
-    cursor = con.execute(
-        "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
-        "WHERE claimed_at < ?", (cutoff,))
-    con.commit()
-    return cursor.rowcount
+    def reap_stale_claims(self, lease_ttl_seconds: int = 300) -> int:
+        """Release all claims older than the TTL. Returns count reaped."""
+        con = sqlite3.connect(self._db_path)
+        cutoff = (datetime.datetime.now(datetime.timezone.utc)
+                  - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
+        cursor = con.execute(
+            "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+            "WHERE claimed_at < ?", (cutoff,))
+        con.commit()
+        return cursor.rowcount
 ```
 
 ### Why optimistic CAS beats pessimistic locking in SQLite
@@ -2127,22 +2453,27 @@ Contention is resolved by the CAS failing (0 rows changed) rather than by
 holding a lock. This is the SQLite-idiomatic equivalent of `SELECT FOR
 UPDATE`.
 
-### The JSON file + SQLite duality
+### The JSON file + database duality
 
-The JSON passport (§1.2) and the SQLite snapshot row serve different
+The JSON passport (§1.2) and the database snapshot row serve different
 purposes:
 
 - **JSON file** — the git-committable, human-reviewable, diff-friendly
   source of truth. The Markdown mirror is derived from it.
-- **SQLite row** — the concurrency-safe, atomically-claimable, restart-
-  survivable runtime state.
+- **Database (SQLite / PostgreSQL)** — the concurrency-safe, atomically-
+  claimable, restart-survivable runtime state.
 
-On every `advance()`, the engine writes **both** in the same logical
-transaction: the SQLite row is updated (CAS) and the JSON file is
-rewritten (under `flock`). If they diverge (e.g. JSON written but SQLite
-commit failed), the SQLite row is authoritative for runtime decisions
+On every `advance()`, the engine writes **both** via the injected
+`TicketStore`: the database row is updated (CAS) and the JSON file is
+rewritten (under `flock`). If they diverge (e.g. JSON written but DB
+commit failed), the database row is authoritative for runtime decisions
 (claim, resume) and the JSON file is regenerated from it on next
 `advance()`. The Markdown mirror is regenerated from the JSON file.
+
+The backend is selected at engine startup via configuration (e.g.
+`store: sqlite` or `store: postgresql` or `store: json`). The domain layer
+is unaware of which backend is in use — it only sees the `TicketStore` /
+`EventStore` / `WorkflowDefinitionStore` protocols.
 
 ---
 
@@ -2330,33 +2661,22 @@ property. The only extension points are `plugin` (array of npm package names
 or `[name, options]` tuples) and `mcp` (MCP server configs — tool providers,
 not observers).
 
-### Recommendation
+### Decision [LOCKED]: agent-instructed + StepWriter (path 1 only)
 
-Two viable paths, in order of preference:
+**Use path 1 (agent-instructed + StepWriter) as the mechanism.** The agent
+is told in its dispatch envelope to return its outcome as a JSON object
+(the `AgentOutcome` shape from §2.3). The Supreme Leader receives the
+outcome as text and calls `advance(ticket_id, outcome)`, which internally
+uses the `StepWriter` (§13) to place the outcome at a deterministic path.
+**The agent never writes a file; it only returns content.**
 
-1. **Agent-instructed writing (deterministic, no plugin dependency).** The
-   agent is told in its dispatch envelope to return its outcome as a JSON
-   object (the `AgentOutcome` shape from §2.3). The Supreme Leader receives
-   the outcome as text and calls `advance(ticket_id, outcome)`, which
-   internally uses the `StepWriter` (§13) to place the outcome at a
-   deterministic path. **The agent never writes a file; it only returns
-   content.** This is the cleanest path, matches the engine-managed output
-   binding principle, and has no dependency on opencode internals.
+This is the cleanest path, matches the engine-managed output binding
+principle (§13), and has no dependency on opencode internals or undocumented
+hook payloads.
 
-2. **Plugin-based capture (observer, for audit).** If we want a belt-and-
-   braces audit trail that captures every subagent output independently of
-   the agent's cooperation, write a local plugin in `.opencode/plugins/`
-   that subscribes to `session.idle` for child sessions, fetches the final
-   message via `client.session.messages()`, and writes it to a sidecar
-   audit log. This is supplementary to path 1, not a replacement — it
-   captures what the agent *said*, while path 1 captures what the engine
-   *recorded*.
-
-**Decision [LOCKED]:** use path 1 (agent-instructed + StepWriter) as the
-primary mechanism. Evaluate path 2 (plugin observer) in Phase 3 if audit
-gaps are found. Do NOT depend on `tool.execute.after` for the `task` tool
-until opencode explicitly documents that the subagent result text is in the
-payload.
+The plugin-based observer (path 2) is **not used**. If audit gaps are
+found in Phase 3 testing, it can be revisited as a supplementary belt-and-
+braces audit trail — but it is not part of the design.
 
 ---
 
@@ -2563,6 +2883,34 @@ These are the loose ends to resolve before locking the design:
 34. **OpenCode.** *Server — Events endpoint.*
     https://opencode.ai/docs/server/ — fetched. `/event` SSE endpoint and
     `/session/:id/children` for child-session observation (§14).
+
+### Conditional outputs and discriminated unions
+
+35. **JSON Schema.** *A Media Type for Describing JSON Documents (2020-12).*
+    §10.2.1 "Keywords for Applying Subschemas With Logic" (`oneOf`, `anyOf`,
+    `allOf`); §10.2.2 "Keywords for Applying Subschemas Conditionally"
+    (`if`/`then`/`else`, `dependentSchemas`).
+    https://json-schema.org/draft/2020-12/json-schema-core — fetched.
+    The `oneOf` + `const` discriminated-union pattern used in §2.7.
+
+36. **JSON Schema.** *Validation: A Vocabulary for Structural Validation
+    of JSON (2020-12).* §6.5.4 `dependentRequired`.
+    https://json-schema.org/draft/2020-12/json-schema-validation — fetched.
+
+37. **TypeScript.** *Handbook — Narrowing — Discriminated unions.*
+    https://www.typescriptlang.org/docs/handbook/2/narrowing.html#discriminated-unions
+    — fetched. Discriminated union with literal discriminant; exhaustiveness
+    checking via `never`.
+
+38. **Pydantic.** *Concepts — Unions — Discriminated unions.*
+    https://docs.pydantic.dev/latest/concepts/unions/#discriminated-unions —
+    fetched. `Field(discriminator="verdict")` + `Literal` tag; callable
+    `Discriminator`; generated JSON Schema emits OpenAPI discriminator.
+
+39. **OpenAPI Initiative.** *OpenAPI Specification 3.0 — Inheritance and
+    Polymorphism — Discriminator.*
+    https://swagger.io/docs/specification/data-models/inheritance-and-polymorphism/
+    — fetched. `discriminator.propertyName` + `mapping` + `oneOf`.
 
 ---
 
