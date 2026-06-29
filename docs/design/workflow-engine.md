@@ -23,6 +23,153 @@ decision objects and routed by their declared fields.
 
 ---
 
+## Philosophy of Approach
+
+This design follows four philosophical commitments, each grounded in the
+authoritative research cited in §12:
+
+1. **Make the machine a machine, not a document.** The current PSC pipeline
+   encodes its state machine in 2,000+ lines of prose across
+   `pipeline/SKILL.md`, `supreme-leader.md`, and `pm.md`. An LLM must read
+   and follow all of it — and LLMs drift. The philosophical commitment here
+   is that routing correctness belongs in a **compile-time artefact** (the
+   JSON workflow definition), not a **prompt-time hope** (prose an agent is
+   told to obey). The state machine becomes testable; the agent becomes a
+   caller of deterministic functions.
+
+2. **Separate routing from judgement.** A workflow has two kinds of decision
+   points: those that are a pure function of recorded state (gate pass/fail,
+   retry budget, join satisfaction), and those that require human or agent
+   judgement (roster classification, user disposition, PM completion,
+   root-cause classification). The design refuses to bake the second kind
+   into the transition graph. Judgement points are first-class
+   `decision_required` states that halt the machine; a typed decision object
+   is supplied; routing then proceeds deterministically off the decision's
+   declared fields. This keeps the state machine dumb and puts the
+   intelligence in declared objects the machine can reason about
+   structurally.
+
+3. **The worker is a pure producer; placement is computed above it.** No
+   mature workflow engine lets the worker decide where its output lands. In
+   Camunda the engine decides via BPMN element scope + output mappings; in
+   Temporal the framework decides via activity ID + workflow run ID; in
+   Step Functions the engine decides via ASL state name + `ResultPath`. The
+   PSC engine follows the same principle: **the agent does not choose where
+   to write its outcome**. A class that is aware of the step identity and the
+   ticket identity computes the storage path/id deterministically. This is
+   the "engine-managed output binding" pattern (see §13.3).
+
+4. **Preserve what works; replace what drifts.** The existing PSC audit model
+   — git-committable markdown passports, ADRs, decision/advisory/clarification
+   files, human review in diffs — is the project's greatest strength. The
+   design preserves it via a derived Markdown mirror regenerated on every
+   state transition. What gets replaced is the prose-driven routing and the
+   un-enforced handoff protocol, not the reviewable artefacts.
+
+---
+
+## Design Agnosticism — A Principle
+
+> **Principle:** The workflow definition, state machine semantics, passport
+> shape, and routing rules defined in this document are **language-agnostic**.
+> They are expressed as JSON data and a labelled transition system, not as
+> Python code. The design should be valid for re-implementation in any
+> language that can read JSON, evaluate boolean conditions, and persist
+> state.
+
+This Python prototype is the **reference implementation**, not the
+specification. The specification is the JSON workflow definition (§2.1),
+the passport schema (§2.2), the AgentOutcome contract (§2.3), and the
+transition table (§7). A Rust, Go, or TypeScript implementation that reads
+the same workflow JSON, implements the same `advance`/`gate_fail`/
+`record_decision` semantics, and writes the same passport JSON is a valid
+interoperable engine.
+
+**What is Python-specific and must not leak into the spec:**
+
+- `StrEnum`, `@dataclass(frozen=True)`, `field(default_factory=...)` are
+  implementation conveniences in the reference library, not contract
+  requirements.
+- `State.__lt__` (forward-progress DAG comparison) is a Python ergonomic; a
+  Rust implementation would use a `PartialOrd` impl with the same semantics.
+- The `StateRegistry` class is a Python idiom for a graph store; other
+  languages may use a struct, a map, or a database.
+
+**What is language-agnostic and IS the spec:**
+
+- The workflow JSON shape (states map, transitions with `outcome → target`,
+  `loop` flag, `retry` blocks, `kind` enum values).
+- The passport JSON shape.
+- The AgentOutcome JSON shape and its `verdict` enum values.
+- The forward-progress DAG comparison semantic (`a < b` iff `a` is a strict
+  ancestor of `b` in the graph with `loop:true` edges removed;
+  `IncomparableStates` when no path either way).
+- The context model (`input` + `vars` + `meta`).
+- The deterministic-vs-judgement transition table.
+
+**Python 3.14+ is chosen for the reference implementation** because it offers
+`enum.StrEnum`, `uuid.uuid7()` (RFC 9562, time-ordered UUIDs — see §13.2),
+deferred annotations (PEP 649), `copy.replace()`, and improved error
+messages — all of which reduce boilerplate and improve the prototype's
+fidelity to the spec. Requiring 3.14+ is a prototype decision, not a spec
+decision.
+
+---
+
+## Semantics and Ontology
+
+This section defines the ontology of the workflow engine — every entity in
+the domain and how it maps to a Python entity in the reference
+implementation. The mapping is the contract between the language-agnostic
+spec (left) and the Python prototype (right).
+
+| Domain entity | Definition | Python entity | Authority |
+|---------------|------------|---------------|-----------|
+| **Workflow** | A labelled transition system: a set of states + transitions, with a start state and terminal states. Versioned (SemVer). | `StateRegistry` (holds the loaded graph) + the workflow JSON document | ASL `States` map; BPMN process |
+| **State** | A node in the workflow graph. Has a name, title, phase, step ordinal, kind, and outgoing transitions. Comparable via forward-progress DAG ancestry. | `State` (frozen dataclass) | ASL "State"; BPMN "Task/Activity" |
+| **StateKind** | The category of a state: `task`, `parallel`, `gate`, `decision_required`, `terminal`. | `StateKind(StrEnum)` | ASL state types (Task, Choice, Parallel, Succeed, Fail); BPMN User Task for `decision_required` |
+| **Transition** | A labelled edge: "on this outcome, go to that state." May be a loop-back (`loop: true`, excluded from the comparison DAG). | `Transition` (frozen dataclass) | ASL `Next`; BPMN `sequenceFlow` |
+| **Verdict** | The label on a transition — the evaluated result of a state that selects the outgoing edge. | `Verdict(StrEnum)` | ASL `Choice Rule` condition; BPMN gateway condition |
+| **Gate** | A state of kind `gate` that runs compliance tiers (T1/T2/T3/T-ARCH) with per-tier retry budgets. | `State` with `kind=StateKind.GATE` + `gate_config` reference | BPMN exclusive gateway + error boundary event |
+| **Tier** | A compliance check dimension (T1 mechanical, T2 architectural, T3 semantic, T-ARCH cross-cutting). Project-specific; not a BPMN standard. | `str` literal in `gate_config.tiers` | PSC-specific |
+| **Decision** | A typed object supplied at a `decision_required` state by a human or PM. The machine records it and routes off its fields. | `dict[str, Any]` validated against `decision_schemas[state]` | BPMN User Task output; ASL task output payload |
+| **Outcome** | The payload an agent returns at a state — the data that flows along the transition edge to the next state. | `AgentOutcome` (dataclass) | ASL task output; Camunda job variables |
+| **Context** | What a state handler sees: `input` (predecessor's output) + `vars` (flat blackboard) + `meta` (`from_state`, `entry_count`, `attempt`, `entered_at`). O(1) memory; no full path surfaced. | `Context` (dataclass) + `StateMeta` (frozen dataclass) | ASL Context Object; Camunda variable scope; Temporal replay-reconstructed locals |
+| **Passport** | The persisted runtime state of one ticket: current state, step log, gate results, decisions, retries, parallel progress, vars, version pins. JSON-authoritative; Markdown mirror derived. | `dict[str, Any]` (the passport JSON) + `JsonPassportStore` adapter | ASL execution snapshot; Camunda process instance variables |
+| **Ticket** | A single workflow execution — one run of a workflow definition, pinned to a snapshot of the definition + agents at A0. | `str` (ticket id, e.g. `TKT-0001`) | Temporal workflow execution; Step Functions execution ARN |
+| **Roster** | The set of specialist agents dispatched in parallel at A1/C2. Dynamic (3–10), resolved from `agents_folder` contents + domain signals; user confirms via checklist. | `RosterResolver` + `RosterProposal` | PSC-specific (no standard equivalent) |
+| **Config** | Engine configuration: paths (agents_folder, workflows_folder, passports_folder), roster defaults/minimum/max/signals. | `Config` (frozen dataclass) + `ConfigReader` (YAML) | PSC-specific |
+| **Step Log** | The append-only audit trail of every state entry: `{step, agent, from_state, entry_count, attempt, uuid, timestamp, outcome_ref}`. The persisted history (what all engines keep); NOT surfaced to handlers. | `list[StepRecord]` in the passport | Temporal Event History; Camunda event stream; Step Functions execution history |
+| **StepRecord** | One entry in the step log, identified by a UUIDv7 (time-ordered, sortable, collision-free across parallel agents). Carries a reference to the AgentOutcome, not the outcome itself. | `StepRecord` (frozen dataclass) with `uuid: uuid.UUID` (UUIDv7) | RFC 9562 §5.7; Temporal event |
+
+### Python 3.14+ syntax in the reference implementation
+
+The reference implementation uses the following 3.14+ features. Per the
+**Design Agnosticism principle**, these are prototype conveniences, not spec
+requirements — a re-implementation in another language uses its own idioms
+for the same semantics.
+
+| Feature | Use | Version | Authority |
+|---------|-----|---------|-----------|
+| `enum.StrEnum` | `StateKind`, `Verdict` — string-valued enums whose `__str__` returns the raw value (drop-in for string constants) | 3.11+ | https://docs.python.org/3.14/library/enum.html |
+| `uuid.uuid7()` | StepRecord UUIDs — time-ordered, lexically sortable, collision-free | 3.14 (RFC 9562) | https://docs.python.org/3.14/library/uuid.html |
+| `@dataclass(frozen=True)` + `field(default_factory=...)` | `State`, `Transition`, `Config`, `StepRecord` — immutable value objects | 3.11+ (refined) | https://docs.python.org/3.14/library/dataclasses.html |
+| `type` statement | Type aliases (`type OutcomeRef = str`) | 3.12+ (PEP 695) | https://peps.python.org/pep-0695/ |
+| `typing.Self` | Return-type annotations on `StateRegistry` methods | 3.11+ | https://docs.python.org/3.14/library/typing.html |
+| `typing.override` | Marking overridden methods | 3.12+ | https://docs.python.org/3.14/library/typing.html |
+| Deferred annotations (PEP 649) | No `from __future__ import annotations` needed | 3.14 | https://docs.python.org/3.14/whatsnew/3.14.html |
+| `copy.replace()` | Immutable updates on frozen dataclasses | 3.14 | https://docs.python.org/3.14/whatsnew/3.14.html |
+| `except*` / `ExceptionGroup` | Structured concurrency in parallel aggregation | 3.11+ | https://docs.python.org/3.14/library/exceptions.html |
+
+**Context7 verification:** all library APIs used in the reference
+implementation MUST be checked against Context7 (or the official docs
+fetched directly) for the latest version-specific style before writing
+code. This is mandated by the project's Authoritative Reference Principle
+(AGENTS.md). The `enum.StrEnum` and `uuid.uuid7()` citations above were
+verified against the Python 3.14.6 docs.
+
+---
+
 ## 0. Executable Steps (ordered)
 
 These are the concrete first actions. Each is a shippable, testable unit.
@@ -629,26 +776,24 @@ synthesised verdict — see §6 (Parallel Flows).
 
 ```python
 # psc_engine/domain/state.py
-from __future__ import annotations
+# Requires Python 3.14+ (StrEnum, uuid7, deferred annotations).
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Optional
+from enum import StrEnum
+from typing import Self
 
 
-class StateKind(Enum):
-    """The category of a state. Enum because it has no parameters."""
+class StateKind(StrEnum):
+    """The category of a state. StrEnum because it has no parameters and
+    `__str__` returns the raw value (drop-in for string constants)."""
     TASK = "task"
     PARALLEL = "parallel"
     GATE = "gate"
     DECISION_REQUIRED = "decision_required"
     TERMINAL = "terminal"
 
-    def __str__(self) -> str:
-        return self.value
 
-
-class Verdict(Enum):
-    """The result an agent returns. Enum because it has no parameters.
+class Verdict(StrEnum):
+    """The result an agent returns. StrEnum because it has no parameters.
     If a verdict ever needs parameters (e.g. gate verdict with tier
     results), add a GateVerdict class alongside this enum."""
     PASS = "pass"
@@ -673,9 +818,6 @@ class Verdict(Enum):
     ACCEPT = "accept"
     ACCEPTED = "accepted"
     EXHAUSTED = "exhausted"
-
-    def __str__(self) -> str:
-        return self.value
 
 
 class IncomparableStates(Exception):
@@ -1720,7 +1862,7 @@ higher residual risk in exchange for velocity, but never zero confidence.
 |-------|-------|----------------|------------|
 | **1 — Schemas + library core** | JSON Schemas (workflow, passport, AgentOutcome, decisions). `psc_engine` domain layer: `State`, `StateRegistry`, `Context`, `ConfigReader`, `RosterResolver`. `psc` CLI for `validate`. `pyproject.toml` (uv) + PyYAML dep. | Schema validation + invariants green on fixtures | — |
 | **2 — State machine + gates + decisions** (riskiest) | `advance`, `route_for_outcome`, `begin_gate`, `gate_fail` (retry vs loop-back), `record_decision` + routing rules, `aggregate_outcomes` + join, `migrate`. Application layer use-cases. | Exhaustive transition-table tests (every row of §7) + property tests (retries never exceed budget; parallel never advances with pending; decision state never auto-advances; mirror matches JSON; state comparison via forward-progress DAG) | Phase 1 |
-| **3 — MCP server + CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §11.1). | Manual A0→A1 dispatch round-trip through MCP / CLI | Phase 2 |
+| **3 — MCP server + CLI + snapshots + mirror** | `psc-state` MCP server (whitelisted `psc-state.*`); `psc` CLI subcommands; agent/workflow snapshotting at A0; Markdown mirror + drift CI. Wire Supreme Leader MCP whitelist (or relax `bash` for CLI — §15.1). SQLite store adapter + persistence (§11) + claim/lease (§12). `StepWriter` + `StepRecord` (§13). | Manual A0→A1 dispatch round-trip through MCP / CLI; restart-resume test; concurrent-claim test | Phase 2 |
 | **4 — Parallel aggregation wiring** | Real A1/C1/C2 fan-out; dispatch envelope generator; `parallel_progress` recovery (re-dispatch a single crashed specialist by step ID) | 3-specialist fan-out where one fails completes only after re-dispatch | Phase 3 |
 | **5 — Adhoc workflow + lifecycle** | `psc-adhoc` workflow definition + tests; `migrate` compatibility; DEPRECATED lifecycle (max 2 MAJOR, 90-day grace) | `psc-main` ticket cannot migrate across MAJOR without incompatibility report; `psc-adhoc` runs end-to-end | Phases 1–4 |
 
@@ -1737,7 +1879,7 @@ silently corrupts tickets — it gets the most test investment.
 
 1. **The Supreme Leader's permission block forbids the call path the
    original brief assumes.** Resolved by designing both surfaces (MCP +
-   CLI) and deferring the choice to runtime (§11.1). No agent overhead
+   CLI) and deferring the choice to runtime (§15.1). No agent overhead
    either way.
 2. **Per-ticket versioning without a deprecation policy is a slow-burning
    liability.** Resolved by SemVer + max 2 concurrent MAJOR + 90-day grace +
@@ -1760,7 +1902,465 @@ silently corrupts tickets — it gets the most test investment.
 
 ---
 
-## 11. Open Questions for Review
+## 11. Persistence and Reload
+
+> **Question answered:** "If we want to persist the workflow progress in a
+> database and reload it and continue, what do we need and how do we do it?"
+
+### What to persist — the minimal resume set
+
+Research across Temporal, Camunda, and Step Functions (see §12 references)
+shows three models: pure event sourcing (Temporal — replay full history),
+stream log + materialised state (Camunda), and snapshot-per-transition
+(Step Functions). For a single-process Python engine the **snapshot model**
+is the pragmatic choice — it is the minimal viable set:
+
+1. **Workflow identity** — which workflow definition + which instance (ticket id).
+2. **Current step / position** — where in the pipeline the workflow is parked.
+3. **Variables / passport** — the data accumulated so far (inputs, outputs,
+   decisions, passport fields, vars blackboard).
+4. **Claim/lock owner** — which session currently owns this step (for
+   multi-session safety; see §12).
+5. **Version / monotonic counter** — for optimistic concurrency on update
+   (CAS).
+
+Items 1–4 fit naturally into the passport itself; item 5 is an
+engine-level concern. This is the Step Functions model, and it is the
+minimal viable set.
+
+### Storage — SQLite WAL, single writer
+
+The JSON passport remains the authoritative source-of-truth (§1.2). For
+persistence across process restarts, the engine writes a **snapshot row**
+to a SQLite database in **WAL mode** alongside the JSON file:
+
+```sql
+-- One row per ticket; state_json holds the passport serialized as JSON.
+CREATE TABLE tickets (
+    id              TEXT PRIMARY KEY,          -- "TKT-0001"
+    workflow_id     TEXT NOT NULL,             -- "psc-main"
+    workflow_version TEXT NOT NULL,            -- "2.0.0"
+    current_step    TEXT NOT NULL,             -- "A3"
+    state_json      TEXT NOT NULL,             -- the full passport JSON
+    claimed_by      TEXT,                      -- session id of the current owner
+    claimed_at      TEXT,                      -- ISO timestamp of the claim
+    version         INTEGER NOT NULL DEFAULT 1, -- CAS counter
+    updated_at      TEXT NOT NULL              -- ISO timestamp
+);
+
+-- The workflow definition is snapshotted separately so running tickets
+-- are pinned to the definition they started with.
+CREATE TABLE workflow_definitions (
+    id          TEXT NOT NULL,                  -- "psc-main"
+    version     TEXT NOT NULL,                  -- "2.0.0"
+    definition  TEXT NOT NULL,                  -- the workflow JSON
+    PRIMARY KEY (id, version)
+);
+
+-- Optional: append-only event log for audit (Temporal-style history
+-- without the cost of full replay). Written in the same transaction as
+-- each snapshot update.
+CREATE TABLE events (
+    uuid        TEXT PRIMARY KEY,              -- UUIDv7 (time-ordered)
+    ticket_id   TEXT NOT NULL REFERENCES tickets(id),
+    step        TEXT NOT NULL,
+    agent       TEXT,
+    from_state  TEXT,
+    verdict     TEXT,
+    outcome_ref TEXT,                           -- path to the AgentOutcome JSON
+    timestamp   TEXT NOT NULL
+);
+```
+
+**WAL mode** (`PRAGMA journal_mode=WAL`) gives concurrent readers + a
+single writer without readers blocking writers. SQLite WAL requires all
+processes to be on the same host — acceptable for a single-file engine.
+`PRAGMA synchronous=NORMAL` gives good performance with WAL.
+
+### Reload — resume at `current_step` with `state_json`
+
+On engine restart:
+
+```python
+# psc_engine/infrastructure/sqlite_store.py
+import sqlite3, json
+
+def load_inflight_tickets(db_path: Path) -> list[Passport]:
+    """Load all non-terminal tickets and resume each at its current_step."""
+    con = sqlite3.connect(db_path)
+    con.row_factory = sqlite3.Row
+    rows = con.execute(
+        "SELECT id, state_json, current_step FROM tickets "
+        "WHERE current_step NOT IN ('COMMIT', 'ESCALATE', 'DEFERRED')"
+    ).fetchall()
+    return [Passport.from_json(row["state_json"]) for row in rows]
+```
+
+This is the Step Functions snapshot model: `SELECT` the row, resume at
+`current_step` with the `state_json` passport. No replay, no
+re-execution of completed states. The optional `events` table provides
+Temporal-style audit history without the cost of full replay.
+
+### Why not pure event sourcing?
+
+Temporal's pure event-sourcing model (replay the entire event history to
+reconstruct state) is more powerful (full audit, time-travel debugging,
+reset to any point) but far heavier to implement. It requires deterministic
+replay — the workflow code must produce the same decisions given the same
+history. For an LLM-agent pipeline where the "workflow code" is the
+state machine (deterministic) but the "activity" is an LLM call (not
+deterministic), pure event sourcing adds complexity without payoff. The
+snapshot model captures the LLM's output in the passport and resumes from
+there. The optional `events` table gives the audit trail if needed.
+
+---
+
+## 12. Multi-Session Parallel Safety
+
+> **Question answered:** "If we have multiple sessions running in parallel,
+> how can we ensure they don't overlap or pick the same ticket to work on?"
+
+### The problem
+
+Multiple OpenCode sessions (or multiple Supreme Leader invocations) could
+read the same ticket from the JSON file and both start working on it. This
+is the double-pickup problem. Every mature workflow engine solves it with a
+single serialization point: Camunda's partition leader, Temporal's
+server-mediated task queue, Step Functions' single-token-dispatch.
+
+### The solution — atomic CAS claim + lease
+
+For a SQLite-backed engine, the canonical pattern is an **atomic
+compare-and-swap (CAS) update** — a single statement that the SQLite writer
+lock serialises:
+
+```python
+# psc_engine/infrastructure/sqlite_store.py
+import sqlite3, uuid, datetime
+
+def claim_ticket(db_path: Path, ticket_id: str, session_id: str,
+                 lease_ttl_seconds: int = 300) -> bool:
+    """Atomically claim a ticket for this session, only if unclaimed.
+    Returns True if the claim succeeded, False if another session got it.
+    Mirrors Step Functions' single-token-dispatch and Camunda's
+    leader-serialised job activation."""
+    con = sqlite3.connect(db_path)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    cursor = con.execute(
+        """
+        UPDATE tickets
+        SET claimed_by = ?, claimed_at = ?, version = version + 1
+        WHERE id = ? AND (claimed_by IS NULL OR claimed_at < ?)
+        """,
+        (session_id, now, ticket_id,
+         (datetime.datetime.now(datetime.timezone.utc)
+          - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat())
+    )
+    con.commit()
+    return cursor.rowcount == 1   # 1 row changed → we won the claim
+
+
+def release_ticket(db_path: Path, ticket_id: str, session_id: str) -> bool:
+    """Release a claim (only if we own it). Used on clean completion."""
+    con = sqlite3.connect(db_path)
+    cursor = con.execute(
+        "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+        "WHERE id = ? AND claimed_by = ?",
+        (ticket_id, session_id)
+    )
+    con.commit()
+    return cursor.rowcount == 1
+
+
+def advance_state(db_path: Path, ticket_id: str, session_id: str,
+                  expected_version: int, new_step: str,
+                  new_state_json: str) -> bool:
+    """Advance a claimed ticket's state with optimistic concurrency.
+    Fails if the version changed (another session modified it)."""
+    con = sqlite3.connect(db_path)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    cursor = con.execute(
+        """
+        UPDATE tickets
+        SET current_step = ?, state_json = ?, version = version + 1,
+            updated_at = ?
+        WHERE id = ? AND claimed_by = ? AND version = ?
+        """,
+        (new_step, new_state_json, now, ticket_id, session_id, expected_version)
+    )
+    con.commit()
+    return cursor.rowcount == 1
+```
+
+### Lease + reaper (crashed-session recovery)
+
+A claim without a timeout is a deadlock if the session crashes. The
+pattern (mirroring Step Functions' `TimeoutSeconds` + heartbeat and
+Camunda's job timeout) is:
+
+1. **Claim with a lease TTL** (e.g. 5 minutes).
+2. **Heartbeat** — the owning session periodically refreshes `claimed_at`
+   while still working.
+3. **Reaper** — a background process (or the next `claim_ticket` call)
+   releases tickets whose `claimed_at` is older than `now - TTL`. This
+   handles crashed sessions.
+
+```python
+def reap_stale_claims(db_path: Path, lease_ttl_seconds: int = 300) -> int:
+    """Release all claims older than the TTL. Returns count reaped."""
+    con = sqlite3.connect(db_path)
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(seconds=lease_ttl_seconds)).isoformat()
+    cursor = con.execute(
+        "UPDATE tickets SET claimed_by = NULL, claimed_at = NULL "
+        "WHERE claimed_at < ?", (cutoff,))
+    con.commit()
+    return cursor.rowcount
+```
+
+### Why optimistic CAS beats pessimistic locking in SQLite
+
+SQLite's lock granularity is the whole database file. A long-held
+`BEGIN EXCLUSIVE` serialises *all* operations. A CAS update is a single
+fast statement: acquire write lock → update one row → commit → release.
+Contention is resolved by the CAS failing (0 rows changed) rather than by
+holding a lock. This is the SQLite-idiomatic equivalent of `SELECT FOR
+UPDATE`.
+
+### The JSON file + SQLite duality
+
+The JSON passport (§1.2) and the SQLite snapshot row serve different
+purposes:
+
+- **JSON file** — the git-committable, human-reviewable, diff-friendly
+  source of truth. The Markdown mirror is derived from it.
+- **SQLite row** — the concurrency-safe, atomically-claimable, restart-
+  survivable runtime state.
+
+On every `advance()`, the engine writes **both** in the same logical
+transaction: the SQLite row is updated (CAS) and the JSON file is
+rewritten (under `flock`). If they diverge (e.g. JSON written but SQLite
+commit failed), the SQLite row is authoritative for runtime decisions
+(claim, resume) and the JSON file is regenerated from it on next
+`advance()`. The Markdown mirror is regenerated from the JSON file.
+
+---
+
+## 13. Deterministic Step Writing
+
+> **Principle:** The agent does NOT decide where to write its outcome. A
+> class that is aware of the step identity and the ticket identity
+> computes the storage path/id deterministically.
+
+### Why — the engine-managed output binding pattern
+
+Research across Camunda, Temporal, and Step Functions confirms this is the
+established best practice, not an invention:
+
+| Engine | Who decides where output lands? | Keyed by | Worker's role |
+|--------|---------------------------------|----------|---------------|
+| Camunda 8 | Engine, via BPMN element scope + output mappings | Element ID + process instance key | Return variables on `complete job` |
+| Temporal | Framework, via event history | Activity type + workflow run ID + event sequence | `return` a serializable value |
+| AWS Step Functions | Engine, via ASL state definition (`ResultPath`/`Output`) | State name + execution ARN | Return JSON from the task |
+| **PSC engine** | **A class aware of (step, ticket)** | **Step ID + ticket ID + UUIDv7** | **Agent produces content; placement is computed** |
+
+In all three engines, the worker is a pure producer; placement is a
+deterministic function of step identity + run identity, owned by a layer
+above the agent. This pattern goes by several names:
+**engine-managed output binding**, **step-scoped artifact placement**,
+**deterministic output addressing**. It is NOT content-addressable storage
+(CAS keys by a hash of the content); it keys by *identity* (step + ticket),
+so two runs of the same step get different paths even if the content is
+identical.
+
+### How — the `StepWriter` class
+
+```python
+# psc_engine/domain/step_writer.py
+from dataclasses import dataclass
+from pathlib import Path
+import uuid
+import json
+
+
+@dataclass(frozen=True)
+class StepRecord:
+    """One entry in the step log. Identified by a UUIDv7 (time-ordered,
+    lexically sortable, collision-free across parallel agents per RFC 9562).
+    Carries a reference to the AgentOutcome, not the outcome itself."""
+    uuid: uuid.UUID           # UUIDv7 — time-ordered, sortable, unique
+    ticket_id: str            # "TKT-0001"
+    step: str                 # "A1#security" (per-specialist step ID)
+    agent: str                # "security-specialist"
+    from_state: str | None   # predecessor state name
+    entry_count: int          # how many times this state has been entered
+    attempt: int              # Retrier attempt within this entry
+    verdict: str              # the outcome's verdict
+    outcome_ref: str          # path to the AgentOutcome JSON file
+    timestamp: str            # ISO 8601
+
+
+class StepWriter:
+    """Determines WHERE a step's outcome gets written. The agent never
+    chooses the path; this class computes it from (ticket_id, step, uuid).
+    The agent only produces the AgentOutcome content; the StepWriter
+    places it."""
+
+    def __init__(self, outcomes_folder: Path):
+        self._folder = outcomes_folder
+
+    def write(self, ticket_id: str, step: str, outcome: dict,
+              agent: str, from_state: str | None, entry_count: int,
+              attempt: int, verdict: str) -> StepRecord:
+        """Write the outcome to a deterministic path and return the
+        StepRecord. The path is a pure function of (ticket, step, uuid)."""
+        step_uuid = uuid.uuid7()   # Python 3.14+ — RFC 9562 time-ordered
+        # Path: outcomes/<ticket>/<step>/<uuid>.json
+        # step may contain '#' (per-specialist step ID) — sanitize for path
+        safe_step = step.replace("#", "_")
+        path = self._folder / ticket_id / safe_step / f"{step_uuid}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(outcome, indent=2), encoding="utf-8")
+        from datetime import datetime, timezone
+        return StepRecord(
+            uuid=step_uuid,
+            ticket_id=ticket_id,
+            step=step,
+            agent=agent,
+            from_state=from_state,
+            entry_count=entry_count,
+            attempt=attempt,
+            verdict=verdict,
+            outcome_ref=str(path),
+            timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    def load(self, outcome_ref: str) -> dict:
+        """Load an AgentOutcome from its reference path."""
+        return json.loads(Path(outcome_ref).read_text(encoding="utf-8"))
+```
+
+### The flow
+
+1. Agent returns an `AgentOutcome` (as text, via MCP or subagent return).
+2. The Supreme Leader calls `advance(ticket_id, outcome)`.
+3. Inside `advance`, the `StepWriter` computes the deterministic path
+   `outcomes/<ticket>/<step>/<uuidv7>.json` and writes the outcome.
+4. The `StepRecord` (with `uuid`, `outcome_ref`) is appended to the
+   passport's `step_log`.
+5. The agent never knew the path; it only produced content.
+
+### Why UUIDv7 for step records
+
+Per [RFC 9562](https://datatracker.ietf.org/doc/rfc9562/) (Proposed
+Standard, May 2024), UUIDv7 embeds a 48-bit Unix-ms timestamp in the most
+significant bits, making UUIDs **lexically sortable by time**. Advantages
+for step history:
+
+1. **Self-sorting** — a directory listing of UUIDv7 filenames is
+   chronological; no parsing needed.
+2. **Collision-free across parallel agents** — 74 random bits provide
+   uniqueness without coordination (no central counter service).
+3. **Database-index locality** — sequential UUIDs cluster at the end of
+   the index, giving O(1)-ish appends rather than random B-tree splits
+   (RFC 9562 §6.11 explicitly calls out UUIDv4's poor index locality).
+4. **No MAC address / privacy leak** — unlike UUIDv1, UUIDv7 uses random
+   bits, not a host MAC (RFC 9562 §8).
+
+Python 3.14 added `uuid.uuid7()` to the stdlib (per RFC 9562). For 3.13 and
+earlier, a third-party library (`uuid_utils`) or a manual implementation per
+§5.7 is required. The reference implementation requires Python 3.14+.
+
+---
+
+## 14. OpenCode Hooks Research
+
+> **Question answered:** "Can we use opencode hooks to save the output of
+> each agent, or does that tool call have to be dependent on the agent?"
+
+### Findings
+
+OpenCode has **no standalone "hooks" page** — `https://opencode.ai/docs/hooks`
+returns 404. The hook system lives inside the **plugin system**. There is
+no dedicated hook/event config field in `opencode.json`; hooks are
+registered by exporting a hooks object from a JS/TS plugin file.
+
+A plugin exports a function returning a hooks object:
+
+```js
+export const MyPlugin = async ({ project, client, $, directory, worktree }) => {
+    return {
+        "tool.execute.before": async (input, output) => { /* ... */ },
+        "tool.execute.after":  async (input, output) => { /* ... */ },
+        event: async ({ event }) => { /* ... */ },
+    }
+}
+```
+
+**Can hooks observe subagent invocations and capture returned text?**
+
+Partially, but not cleanly:
+
+- The `task` tool (which dispatches subagents) is a real tool, gated by the
+  `task` permission key. Therefore `tool.execute.before` and
+  `tool.execute.after` fire for `task` invocations. **However**, the docs
+  only document the hook payload shape for `bash`/`read` tools. The docs do
+  **not explicitly document** that the subagent's returned text is available
+  in the `tool.execute.after` `output` for the `task` tool. Whether the full
+  subagent result text is in the payload cannot be confirmed from the
+  authoritative pages alone.
+- A more reliable observation path exists via **session/message events**:
+  subagents create **child sessions**. The plugin event list includes
+  `session.idle`, `session.updated`, `message.updated`, `message.part.updated`.
+  A plugin can subscribe to `session.idle` for a child session and call
+  `client.session.messages({ path: { id } })` to retrieve the subagent's
+  final message parts.
+
+**Can a hook write to the filesystem when an agent returns?**
+
+Yes, indirectly. A plugin can subscribe to `session.idle` and use Bun's `$`
+shell API or Node `fs` (plugins are JS/TS modules) to write the retrieved
+message text to disk. The "Send notifications" example demonstrates running
+shell commands from a `session.idle` handler — the same pattern can write
+files.
+
+**Config schema:** the `Config` object at `https://opencode.ai/config.json`
+has no `hooks`, `events`, `lifecycle`, `middleware`, or `interceptor`
+property. The only extension points are `plugin` (array of npm package names
+or `[name, options]` tuples) and `mcp` (MCP server configs — tool providers,
+not observers).
+
+### Recommendation
+
+Two viable paths, in order of preference:
+
+1. **Agent-instructed writing (deterministic, no plugin dependency).** The
+   agent is told in its dispatch envelope to return its outcome as a JSON
+   object (the `AgentOutcome` shape from §2.3). The Supreme Leader receives
+   the outcome as text and calls `advance(ticket_id, outcome)`, which
+   internally uses the `StepWriter` (§13) to place the outcome at a
+   deterministic path. **The agent never writes a file; it only returns
+   content.** This is the cleanest path, matches the engine-managed output
+   binding principle, and has no dependency on opencode internals.
+
+2. **Plugin-based capture (observer, for audit).** If we want a belt-and-
+   braces audit trail that captures every subagent output independently of
+   the agent's cooperation, write a local plugin in `.opencode/plugins/`
+   that subscribes to `session.idle` for child sessions, fetches the final
+   message via `client.session.messages()`, and writes it to a sidecar
+   audit log. This is supplementary to path 1, not a replacement — it
+   captures what the agent *said*, while path 1 captures what the engine
+   *recorded*.
+
+**Decision [LOCKED]:** use path 1 (agent-instructed + StepWriter) as the
+primary mechanism. Evaluate path 2 (plugin observer) in Phase 3 if audit
+gaps are found. Do NOT depend on `tool.execute.after` for the `task` tool
+until opencode explicitly documents that the subagent result text is in the
+payload.
+
+---
+
+## 15. Open Questions for Review
 
 These are the loose ends to resolve before locking the design:
 
@@ -1785,29 +2385,184 @@ These are the loose ends to resolve before locking the design:
    propose the roster and the user confirm (two-step, current design), or
    does the user select from scratch (one-step, simpler but loses the
    signal-driven default)?
+7. **SQLite vs JSON-only** — the design presents both (§1.2 JSON
+   authoritative; §11 SQLite for persistence/concurrency). Confirm both are
+   required, or drop SQLite if multi-session safety is not a near-term
+   requirement.
 
 ---
 
-## 12. References
+## 16. References
 
-Authoritative sources fetched during research (§1.7, §1.8, §2.4, §2.5):
+### Workflow modeling and semantics
 
-| Source | URL | Status |
-|--------|-----|--------|
-| Amazon States Language spec | https://states-language.net/spec.html | Fetched in full — foundational for the LTS graph model, `Choice` rules, `Parallel` join, `Retry` blocks, Context Object |
-| AWS Step Functions ASL overview | https://docs.aws.amazon.com/step-functions/latest/dg/concepts-amazon-states-language.html | Fetched |
-| AWS Step Functions Context Object | https://docs.aws.amazon.com/step-functions/latest/dg/input-output-contextobject.html | Fetched — `State.RetryCount` precedent for `meta.entry_count`/`meta.attempt` |
-| AWS Step Functions workflow variables | https://docs.aws.amazon.com/step-functions/latest/dg/workflow-variables.html | Fetched — scoped variables precedent for `vars` blackboard |
-| OMG BPMN 2.0.2 spec | https://www.omg.org/spec/BPMN/2.0.2/ | Landing fetched; full PDF requires OMG account — vocabulary (Task, Gateway, User Task, sequence flow) |
-| Camunda Gateways | https://docs.camunda.io/docs/8.9/components/modeler/bpmn/gateways/ | Fetched — XOR/AND/OR gateway semantics |
-| Camunda User Tasks | https://docs.camunda.io/docs/8.9/components/modeler/bpmn/user-tasks/ | Fetched — User Task (block + form + resume) precedent for `decision_required` |
-| Camunda Variables | https://docs.camunda.io/docs/components/concepts/variables.md | Fetched — scoped variables precedent |
-| Camunda Process Definition Versioning | https://docs.camunda.io/docs/components/best-practices/operations/versioning-process-definitions/ | Fetched — snapshot-per-instance consensus |
-| Temporal Workflows | https://docs.temporal.io/workflows | Fetched — replay-from-history model |
-| Temporal Event History | https://docs.temporal.io/workflow-execution/event | Fetched — 51,200-event cap + Continue-As-New |
-| Temporal Worker Versioning | https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning | Fetched — Pinned = snapshot-per-instance |
-| Temporal Python Versioning | https://docs.temporal.io/develop/python/workflows/versioning | Fetched — patching semantics |
-| Van der Aalst, "Application of Petri Nets to Workflow Management" (1998) | DOI 10.1142/S0218126698000033 | Cited by canonical bibliographic reference (PDF unreachable) — WF-net soundness |
+1. **Amazon States Language Specification.** *States Language Specification.*
+   https://states-language.net/spec.html — fetched in full. Foundational
+   for the labelled-transition-system graph model, `Choice` rules,
+   `Parallel` join (AND-join, wait for all branches), `Retry` blocks
+   (`max_attempts`, `interval`, `backoff`), and the Context Object
+   (`State.RetryCount`).
+
+2. **AWS Step Functions.** *Amazon States Language overview.*
+   https://docs.aws.amazon.com/step-functions/latest/dg/concepts-amazon-states-language.html
+   — fetched.
+
+3. **AWS Step Functions.** *Context Object.*
+   https://docs.aws.amazon.com/step-functions/latest/dg/input-output-contextobject.html
+   — fetched. Precedent for `meta.entry_count` / `meta.attempt` (mirrors
+   `State.RetryCount`).
+
+4. **AWS Step Functions.** *Workflow variables.*
+   https://docs.aws.amazon.com/step-functions/latest/dg/workflow-variables.html
+   — fetched. Scoped-variables precedent for the `vars` blackboard (§1.8).
+
+5. **Object Management Group.** *BPMN 2.0.2 Specification.*
+   https://www.omg.org/spec/BPMN/2.0.2/ — landing fetched; full PDF requires
+   OMG account. Vocabulary: Task, Gateway (XOR/AND/Inclusive), User Task
+   (block + form + resume), sequence flow, boundary error events, loop
+   markers.
+
+6. **Camunda.** *BPMN Gateways.*
+   https://docs.camunda.io/docs/8.9/components/modeler/bpmn/gateways/ —
+   fetched. XOR/AND/OR gateway semantics.
+
+7. **Camunda.** *BPMN User Tasks.*
+   https://docs.camunda.io/docs/8.9/components/modeler/bpmn/user-tasks/ —
+   fetched. User Task (block + form + resume) precedent for
+   `decision_required` states (§1.3).
+
+8. **Camunda.** *Variables and Variable Scopes.*
+   https://docs.camunda.io/docs/components/concepts/variables.md — fetched.
+   Scoped variables + output mappings precedent for `vars` (§1.8) and
+   engine-managed output binding (§13).
+
+9. **Camunda.** *Process Definition Versioning.*
+   https://docs.camunda.io/docs/components/best-practices/operations/versioning-process-definitions/
+   — fetched. Snapshot-per-instance consensus (§1.4).
+
+10. **van der Aalst, W. M. P.** "The Application of Petri Nets to Workflow
+    Management: The Workflow Nets." *Journal of Circuits, Systems, and
+    Computers*, Vol. 8, No. 1–2, pp. 21–66, 1998.
+    DOI: [10.1142/S0218126698000033](https://doi.org/10.1142/S0218126698000033)
+    — cited by canonical bibliographic reference (PDF unreachable). WF-net
+    soundness (liveness + boundedness); four routing primitives
+    (sequential, parallel, choice, iteration).
+
+### Durable execution and replay
+
+11. **Temporal.** *Workflows — How Workflow replay works.*
+    https://docs.temporal.io/workflows — fetched. Replay-from-history model
+    (§11).
+
+12. **Temporal.** *Events and Event History.*
+    https://docs.temporal.io/workflow-execution/event — fetched. 51,200-event
+    cap + Continue-As-New.
+
+13. **Temporal.** *Workflow Execution overview (Replays, State Transition).*
+    https://docs.temporal.io/workflow-execution — fetched.
+
+14. **Temporal.** *Task Queues (server-mediated assignment, persistence).*
+    https://docs.temporal.io/task-queue — fetched. Multi-session safety
+    precedent (§12).
+
+15. **Temporal.** *Workers (stateless, resurrection).*
+    https://docs.temporal.io/workers — fetched.
+
+16. **Temporal.** *Worker Versioning.*
+    https://docs.temporal.io/production-deployment/worker-deployments/worker-versioning
+    — fetched. Pinned = snapshot-per-instance (§1.4).
+
+17. **Temporal.** *Python Workflows — Versioning.*
+    https://docs.temporal.io/develop/python/workflows/versioning — fetched.
+    Patching semantics.
+
+18. **Temporal.** *Python SDK — Activity basics.*
+    https://docs.temporal.io/develop/python/activities/basics — fetched.
+    Activity returns a value; framework records it in event history (§13).
+
+### Step Functions execution model
+
+19. **AWS Step Functions.** *Concepts (Standard vs Express, exactly-once,
+    1-year).*
+    https://docs.aws.amazon.com/step-functions/latest/dg/concepts.html —
+    fetched. Snapshot-per-transition persistence model (§11).
+
+20. **AWS Step Functions.** *Activities (taskToken, GetActivityTask,
+    heartbeat, timeout).*
+    https://docs.aws.amazon.com/step-functions/latest/dg/concepts-activities.html
+    — fetched. Single-token-dispatch precedent for multi-session safety (§12).
+
+### SQLite persistence and concurrency
+
+21. **SQLite.** *Write-Ahead Logging.*
+    https://www.sqlite.org/wal.html — fetched. WAL mode, single-writer,
+    same-host constraint (§11, §12).
+
+22. **SQLite.** *File Locking And Concurrency in SQLite Version 3.*
+    https://www.sqlite.org/lockingv3.html — fetched. SHARED/RESERVED/PENDING/
+    EXCLUSIVE locks; why optimistic CAS beats pessimistic locking in SQLite
+    (§12).
+
+### UUIDv7 and time-ordered identifiers
+
+23. **IETF.** *RFC 9562 — Universally Unique IDentifiers (UUIDs).* Proposed
+    Standard, May 2024. Obsoletes RFC 4122.
+    https://datatracker.ietf.org/doc/rfc9562/ — fetched. §5.7 (UUIDv7
+    format: 48-bit ms timestamp + version + random), §2.1 (motivation:
+    lexical sortability, index locality, no MAC leak), §6.11 (sorting),
+    §6.2 (monotonicity within a millisecond).
+
+### Python 3.14+ reference implementation
+
+24. **Python Software Foundation.** *Python 3.14 — enum module.*
+    https://docs.python.org/3.14/library/enum.html — fetched. `StrEnum`
+    (added 3.11); `auto()` yields lower-cased member name; `__str__` returns
+    the raw value.
+
+25. **Python Software Foundation.** *Python 3.14 — uuid module.*
+    https://docs.python.org/3.14/library/uuid.html — fetched. `uuid6()`,
+    `uuid7()`, `uuid8()` added in 3.14 per RFC 9562; `UUID.time` returns the
+    48-bit ms timestamp for version 7.
+
+26. **Python Software Foundation.** *Python 3.14 — dataclasses module.*
+    https://docs.python.org/3.14/library/dataclasses.html — fetched.
+    `frozen=True` + `field(default_factory=...)` idiom; `field(doc=...)`
+    added in 3.14.
+
+27. **Python Software Foundation.** *Python 3.14 — What's New.*
+    https://docs.python.org/3.14/whatsnew/3.14.html — fetched. Deferred
+    annotations (PEP 649), `copy.replace()`, template strings (PEP 750),
+    `compression.zstd` (PEP 784), `except` without brackets (PEP 758).
+
+28. **Smith, J., et al.** *PEP 695 — Type Parameter Syntax.*
+    https://peps.python.org/pep-0695/ — the `type` statement (3.12+).
+
+### OpenCode platform
+
+29. **OpenCode.** *Plugins.*
+    https://opencode.ai/docs/plugins/ — fetched. Hook system (`tool.execute.before`,
+    `tool.execute.after`, `event`); session events (`session.idle`,
+    `message.updated`); SDK client for retrieving subagent messages (§14).
+
+30. **OpenCode.** *Config.*
+    https://opencode.ai/docs/config/ — fetched. No `hooks`/`events` config
+    field; extension points are `plugin` and `mcp` only.
+
+31. **OpenCode.** *Agents.*
+    https://opencode.ai/docs/agents/ — fetched. Agents configured via `prompt`
+    field; `task` permission key governs subagent dispatch.
+
+32. **OpenCode.** *Config JSON Schema.*
+    https://opencode.ai/config.json — fetched. Confirms no hook/event/lifecycle
+    config fields (§14).
+
+33. **OpenCode.** *SDK — Events.*
+    https://opencode.ai/docs/sdk/ — fetched. `client.event.subscribe()` and
+    `client.session.messages()` for the plugin-based observer path (§14).
+
+34. **OpenCode.** *Server — Events endpoint.*
+    https://opencode.ai/docs/server/ — fetched. `/event` SSE endpoint and
+    `/session/:id/children` for child-session observation (§14).
 
 ---
 
