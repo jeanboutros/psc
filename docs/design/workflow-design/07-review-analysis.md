@@ -777,30 +777,154 @@ Options:
 
 ## Updated Progress Summary (Round 2 — final)
 
-| Reviewer | Total | Pending | Clarification Asked | Decided | Implemented |
-|----------|-------|---------|--------------------|---------|-------------| 
-| SW Engineer | 89 | 63 | 0 | 26 | 0 |
-| Security | 36 | 0 | 0 | 36 | 0 |
-| Docs Writer | 23 | 23 | 0 | 0 | 0 |
-| **Total** | **148** | **86** | **0** | **62** | **0** |
+| Reviewer | Total | Pending | Decided | Implemented |
+|----------|-------|---------|---------|-------------| 
+| SW Engineer | 89 | 0 | 89 | 0 |
+| Security | 36 | 0 | 36 | 0 |
+| Docs Writer | 23 | 0 | 23 | 0 |
+| **Total** | **148** | **0** | **148** | **0** |
 
-### All clarifications resolved:
+### ALL 148 review points have been addressed. Zero pending.
 
-1. **D-008:** Separate `status_log` table (option a) — own hash chain, clean separation from step_log. PROPOSED.
-2. **D-010:** Keep bare-tuple key + enforce claim gate as hard precondition. Key is correctness mechanism, not auth. PROPOSED.
-3. **D-015a:** StepOutcome (validated) vs RawPayload (forensic). Both in OutcomeStore with `kind` discriminator. `outcome_ref` → StepOutcome. PROPOSED.
-4. **S4:** Fencing token (`claim_epoch`) on subjects table. `claim()` returns token. All writes CAS on `claim_epoch`. PROPOSED.
+### Gaps 25-89 decisions (SW Engineer):
 
-### New decisions from agent proposals (awaiting user confirmation):
+| # | Decision |
+|---|----------|
+| 25 | Resolved by D-011 (remove _registry) |
+| 26 | Keep name-based equality, document it |
+| 27 | Split is_retry into is_loop_back (entry_count>1) + is_retry (attempt>0) |
+| 28 | Pass State, not dict, to DispatchHandler.dispatch |
+| 29 | Pass SchemaRegistry at handler construction; dispatch(state, ctx) only |
+| 30 | EventStore.append takes StepRecord, not individual fields |
+| 31 | Return list[EventRecord] (typed) |
+| 32 | Return list[InflightSubject] (named fields) |
+| 33 | save takes passport_json only; store extracts active_steps internally |
+| 34 | Resolved by D-030 (claim returns ClaimResult with claim_epoch) |
+| 35 | Reaping releases only; document no auto re-dispatch |
+| 36 | HookErrorSink; critical hooks (audit) fail-closed, non-critical swallow |
+| 37 | Drop AuditHook; EventStore IS the audit trail |
+| 38 | Transactional outbox for EventDispatchHook (Phase 5) |
+| 39 | Write StepRecord + update passport BEFORE firing any hook |
+| 40 | For terminal: state.entered first, then terminal event. Cancel: only workflow.cancelled (no state.entered) |
+| 41 | $roster resolves to ctx.vars["domain_classification"]["roster"]. Only $roster engine-reserved |
+| 42 | Resolved by D-013 (quorum defined as object) |
+| 43 | carried_forward = produced outputs merged into ctx.vars of target state |
+| 44 | Keys are JSON Pointer (/dispositions), values are JSONPath ($.findings[*].disposition) |
+| 45 | Fix JSONPath filter syntax per RFC 9535: [?(@.disposition=="ACCEPT")] |
+| 46 | Profile carries own SemVer; workflow pins profile_version; snapshotted per subject |
+| 47 | If agent changes, issue a warning (not error). Record agent file presence, warn on change |
+| 48 | Case-fold matching; pluggable SignalMatcher protocol in profile |
+| 49 | Accept entries but they MUST be in agents_folder. Custom humans as future feature |
+| 50 | domain_signals: list[str], SL-supplied from A0 classification |
+| 51 | Define full exception hierarchy: WorkflowError(base) + 10 subclasses |
+| 52 | Resolved by D-007 (dispatch_retry) |
+| 53 | Migration contract with mapping files (Phase 5) |
+| 54 | Drop max_review_rounds; keep round_budget on gate |
+| 55 | Increment review_round at CR2→B2 loop-back (request_changes) |
+| 56 | Full B+C re-walk then CR1 (new review). Document explicitly |
+| 57 | Engine computes completion from plan units (len(applied)==len(plan)) |
+| 58 | routing_rule IS the transition source for decision_required; must declare event_name per branch |
+| 59 | Resolved by #58 |
+| 60 | Add decision.user_disposition schema to psc-profile.json |
+| 61 | A0 becomes decision_required with decision.roster_confirmation. Document task vs decision_required difference clearly. CR3: keep as author acceptance formality (user to confirm) |
+| 62 | Define RosterProposal dataclass |
+| 63 | load_workflow returns WorkflowDefinition (frozen dataclass + StateRegistry) |
+| 64 | current_state returns CurrentStateResult |
+| 65 | QueryWhat enum with typed results |
+| 66 | route_for_outcome is read-only preview of advance's routing |
+| 67 | Enumerate validate_passport checks |
+| 68 | Add gate_config.base JSON Schema |
+| 69 | Resolved by D-007 (retry_policy removed) |
+| 70 | Validate phase FK at load time |
+| 71 | Validate name==dict_key at load time |
+| 72 | agent becomes optional (str|None); omit on terminal |
+| 73 | Move agent to profile; use abstract roles (orchestrator/architect/reviewer). Role can map to agent, human, or service |
+| 74 | Define WorkflowService with full method surface |
+| 75 | Add layering subsection with file tree |
+| 76 | Resolved by D-031 (OutcomeStore split) |
+| 77 | Split SubjectStore into SubjectReader/SubjectWriter/SubjectClaimStore |
+| 78 | Redactors parse everything to string. Their nature = logs/text outputs. Retention unbounded |
+| 79 | ConfigPort protocol in domain; Config in infrastructure |
+| 80 | Document no deadlock detection; reaper handles it |
+| 81 | (covered by #78 — retention unbounded, events stay forever) |
+| 82 | SQLite migrations via numbered SQL files |
+| 83 | Returns WorkflowDefinitionRecord with lifecycle metadata |
+| 84 | subjects_summary table for fast queries |
+| 85 | Add index on claimed_at |
+| 86 | PRAGMA foreign_keys = ON |
+| 87 | Per-operation connection from pool |
+| 88 | Use subdirectory structure (resolved by D-031) |
+| 89 | Remove aggregate_outcomes from test (resolved by D-013) |
 
-- **D-026:** Hash chain (blockchain-style) for events table tamper-evidence — `row_hash = H(prev_hash, row_data)`.
-- **D-027:** Separate `status_log` table for flag events (cancelled/deferred/archived) — own hash chain, clean separation.
-- **D-028:** Idempotency key stays bare tuple `(subject_id, step, entry_count, attempt)`. Claim gate is the auth boundary, not the key.
-- **D-029:** StepOutcome (validated, schema-conformant) vs RawPayload (forensic, optional). Both in OutcomeStore with `kind` field. `outcome_ref` → StepOutcome. `raw_ref` → RawPayload (nullable).
-- **D-030:** Fencing token (`claim_epoch`) on subjects table. `claim()` returns token. `save()` CAS on version AND claim_epoch. `LeaseLostError` on mismatch.
-- **D-031:** `StepWriter` renamed to `OutcomeStore` (implementation-specific storage: file, JSONB, compressed bytes). Protocol allows string or byte array.
-- **D-032:** Default classification is `private` (fail-closed). All primitives default to private unless explicitly `public` or `protected`.
-- **D-033:** Retry config (`dispatch_retry` + `reentry_budget`) defined in `psc_engine.yaml`, included in context or referenced by the workflow.
+### Docs Writer decisions:
+
+| # | Decision |
+|---|----------|
+| D1 | Resolved by D-008 (flags not states) |
+| D2 | Add event_name to EventStore.append |
+| D3 | Aggregation produces transition key (reviews_complete), not generic pass |
+| D4 | Resolved by #44 (JSON Pointer keys, JSONPath values) |
+| D5 | Add load_outcome to API table (resolved by D-024) |
+| D6 | Resolved by D-004 (verdict is string, not enum) |
+| D7 | Align test to needs_clarification (resolved) |
+| D8 | Add new_subject to API table |
+| D9 | Define StepOutcome (resolved by D-002 + D-015a) |
+| D10 | Add missing fields to State dataclass |
+| D11 | Remove State.id (identified by name) |
+| D12 | Define StateRegistry (resolved by D-011) |
+| D13 | Resolved by #58 (routing_rule declares event_name) |
+| D14 | Resolved by D-005 (skip removed) |
+| D15 | Remove stamp, use UUIDv7 |
+| D16 | Define A0L in psc-adhoc workflow |
+| D17 | Add full psc-adhoc JSON to data model |
+| D18 | Sequential tier evaluation, first-fail triggers loop-back |
+| D19 | Resolved by #41 ($-prefix documented) |
+| D20 | Resolved by D-013 (#42 quorum defined) |
+| D21 | Resolved by #54 (max_review_rounds dropped) |
+| D22 | Store-based snapshot, not file copy |
+| D23 | Resolved by #46 (profile versioned + pinned) |
+
+### Security decisions (final batch):
+
+| # | Decision |
+|---|----------|
+| S14 | Out of scope, document as app layer responsibility. Future: SecretRef |
+| S15 | Out of scope (app layer). Future: rate limiting middleware |
+| S16 | STRIDE threat model as companion doc (Phase 5) |
+| S17 | Deferred (add security section to config in future) |
+| S18 | Raise RedactorNotRegisteredError on missing name |
+| S19 | Resolved by #36 (HookErrorSink) |
+| S20 | Events stay forever (unbounded, per user) |
+| S21 | Deferred to future security backlog |
+| S22 | 0600 permissions + dedicated user |
+| S23 | TLS if networked, stdio if local |
+| S24 | Add content validation in profile (max-length, no control chars) |
+| S25 | UI escapes, CSP header (UI layer responsibility) |
+| S26 | Future: namespace isolation |
+| S27 | Resolved by D-005 (skip removed) |
+| S28 | Validate root_cause enum (RC-1..RC-5) at API boundary |
+| S29 | Document confidence as advisory; challenger validates if used in routing |
+| S30 | Engine records model from dispatch handler response metadata |
+| S31 | Deferred to S1 |
+| S32 | Deferred to S1 |
+| S33 | Deferred to S1 |
+| S34 | Derive signals from request text (future) |
+| S35 | Re-validate event_name after substitution |
+| S36 | Resolved by D-018 (TDD on redactors) |
+
+### User corrections/notes from the gap review:
+
+- **#47:** If agent changes, just issue a warning (not error).
+- **#49:** Custom entries must be in agents_folder. Humans as future feature.
+- **#61:** A0 becomes decision_required. Document task vs decision_required difference clearly. CR3 flagged as potentially dead — keep as author acceptance formality (user to confirm).
+- **#73:** Role can map to a human or a service also (not just agents).
+- **#78:** Redactors parse everything to string. Retention is unbounded (events stay forever).
+- **S17:** Not selected — deferred to future security backlog.
+- **S21:** Not selected — deferred to future security backlog.
+- **All security items:** Added to future security backlog.
+
+### CR3 question (user flagged):
+User asked to check if CR3 is a dead step. Recommendation: keep as author acceptance formality. User to confirm whether to keep or remove. Currently marked as KEEP (pending user confirmation).
 
 ---
 
