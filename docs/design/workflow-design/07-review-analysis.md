@@ -775,18 +775,188 @@ Options:
 
 ---
 
-## Updated Progress Summary (Round 2)
+## Updated Progress Summary (Round 2 — final)
 
 | Reviewer | Total | Pending | Clarification Asked | Decided | Implemented |
 |----------|-------|---------|--------------------|---------|-------------| 
-| SW Engineer | 89 | 63 | 3 (D-008, D-010, D-015a) | 26 | 0 |
-| Security | 36 | 0 | 1 (S4) | 36 | 0 |
+| SW Engineer | 89 | 63 | 0 | 26 | 0 |
+| Security | 36 | 0 | 0 | 36 | 0 |
 | Docs Writer | 23 | 23 | 0 | 0 | 0 |
-| **Total** | **148** | **86** | **4** | **62** | **0** |
+| **Total** | **148** | **86** | **0** | **62** | **0** |
 
-### Items awaiting clarification (to send to agents):
+### All clarifications resolved:
 
-1. **D-008:** How to track flag events without polluting workflow history — separate log, same log with category, or passport status block with timestamp log?
-2. **D-010:** Concrete design for caller-bound idempotency key (nonce or lease ownership).
-3. **D-015a:** Distinction between StepOutcome (validated, schema-conformant) and raw agent/API payload (convenience).
-4. **S4:** Explanation + concrete design for fencing token in claim/lease.
+1. **D-008:** Separate `status_log` table (option a) — own hash chain, clean separation from step_log. PROPOSED.
+2. **D-010:** Keep bare-tuple key + enforce claim gate as hard precondition. Key is correctness mechanism, not auth. PROPOSED.
+3. **D-015a:** StepOutcome (validated) vs RawPayload (forensic). Both in OutcomeStore with `kind` discriminator. `outcome_ref` → StepOutcome. PROPOSED.
+4. **S4:** Fencing token (`claim_epoch`) on subjects table. `claim()` returns token. All writes CAS on `claim_epoch`. PROPOSED.
+
+### New decisions from agent proposals (awaiting user confirmation):
+
+- **D-026:** Hash chain (blockchain-style) for events table tamper-evidence — `row_hash = H(prev_hash, row_data)`.
+- **D-027:** Separate `status_log` table for flag events (cancelled/deferred/archived) — own hash chain, clean separation.
+- **D-028:** Idempotency key stays bare tuple `(subject_id, step, entry_count, attempt)`. Claim gate is the auth boundary, not the key.
+- **D-029:** StepOutcome (validated, schema-conformant) vs RawPayload (forensic, optional). Both in OutcomeStore with `kind` field. `outcome_ref` → StepOutcome. `raw_ref` → RawPayload (nullable).
+- **D-030:** Fencing token (`claim_epoch`) on subjects table. `claim()` returns token. `save()` CAS on version AND claim_epoch. `LeaseLostError` on mismatch.
+- **D-031:** `StepWriter` renamed to `OutcomeStore` (implementation-specific storage: file, JSONB, compressed bytes). Protocol allows string or byte array.
+- **D-032:** Default classification is `private` (fail-closed). All primitives default to private unless explicitly `public` or `protected`.
+- **D-033:** Retry config (`dispatch_retry` + `reentry_budget`) defined in `psc_engine.yaml`, included in context or referenced by the workflow.
+
+---
+
+## Agent Responses to Round 2 Clarifications
+
+---
+
+### D-008: Flag Event Tracking — Architect Response
+
+**Recommendation:** Option (a) — Separate `status_log` table (append-only, own hash chain).
+
+**Three options evaluated:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| (a) Separate `status_log` table | Clean separation; `step_log` stays pure; independent hash chain; queries can't accidentally return flags | Two tables, two chains; full ordered history needs UNION |
+| (b) Same `events` table with `category` field | Single hash chain; one table; minimal schema | **Pollutes the step_log** — violates the principle; every query needs `WHERE category='state_event'`; sparse rows |
+| (c) Passport `status` block with embedded `history[]` | Locality; no new table | Unbounded array growth; loses row-level tamper-evidence; cross-passport queries need full scan |
+
+**Recommended schema:**
+```sql
+status_log (
+  id          SERIAL,
+  subject_id  TEXT REFERENCES subjects(id),
+  flag        TEXT,          -- cancelled | deferred | archived | restored
+  actor       TEXT,          -- session/agent id
+  reason      TEXT,
+  ts          TEXT NOT NULL,
+  prev_hash   TEXT,          -- hash chain
+  hash        TEXT           -- H(prev_hash, row fields)
+)
+```
+
+**Key principle:** `step_log` records **state transitions** (what the state machine did). `status_log` records **flag changes** (metadata about the subject). Two distinct queries → two distinct stores. The flag is metadata, not a state transition.
+
+---
+
+### D-010: Caller-Bound Idempotency Key — Architect Response
+
+**Recommendation:** Keep the bare-tuple key `(subject_id, step, entry_count, attempt)`. Enforce claim ownership as a hard precondition of `advance()`. Do NOT bind `claim_id` into the key.
+
+**Key insight:** The predictable key is only exploitable if `advance()` is callable *without* a claim. If `advance()` enforces a valid active claim as step 1 (before the idempotency check), an attacker who lacks the lease is rejected at the auth gate, before the idempotency key is consulted. The predictable key is never reachable by an un-leased caller.
+
+**Analysis of binding `claim_id` into the key:**
+
+| Approach | Closes pre-submission? | Retry semantics | Complexity |
+|----------|----------------------|-----------------|------------|
+| Bare tuple + claim gate enforced | ✅ Yes (gate blocks un-leased callers) | Stable across retries | Lowest |
+| Bind key to `claim_id` | ✅ Yes (belt-and-suspenders) | **Breaks if lease rotates mid-retry** — new `claim_id` → new `K` → not deduped | Higher |
+| Per-dispatch caller nonce | ✅ Yes | Breaks retry entirely (new nonce each call) | Highest |
+
+**The `claim_id`-bound key breaks retry semantics:** a legitimate retry after a transient lease expiry + re-acquire would compute a different key and fail to dedup — coupling idempotency (correctness) with lease lifetime (liveness).
+
+**Decision:** The idempotency key is a **correctness mechanism** for retry/replay deduplication, NOT an authorization control. Authorization to advance is enforced exclusively by the active-lease check. Document this explicitly. If a future architecture relaxes the claim gate, bind `claim_id` at that point.
+
+---
+
+### D-015a: StepOutcome vs RawPayload — Data Architect Response
+
+**Distinction:**
+
+| Entity | What it is | Mandatory | Read by engine |
+|--------|-----------|-----------|----------------|
+| **StepOutcome** | Validated, schema-conformant record (verdict + decision + confidence + validated payload fields). Exists only AFTER schema validation passes. | **Mandatory** for every completed step | Yes — routing reads `verdict` and `validated_fields` |
+| **RawPayload** | Unprocessed bytes from the DispatchHandler (agent text, HTTP response, form submission) BEFORE normalization/validation. Forensic evidence. | **Optional** but strongly recommended; MANDATORY when validation fails (no StepOutcome exists) | No — never read by routing; only by auditors, challengers, replay tools |
+
+**Storage:** Both stored in `OutcomeStore` with a `kind` discriminator (`step_outcome` vs `raw_payload`). Implementation decides format (PG JSONB, SQLite JSON, compressed bytes).
+
+**`outcome_ref` → StepOutcome** (the validated canonical). `raw_ref` → RawPayload (nullable, separate).
+
+**Data model:**
+```
+step_log
+  ├── outcome_ref ──────► StepOutcome ──► raw_ref ──► RawPayload
+  └── raw_ref (nullable) ─────────────────────────► RawPayload
+```
+
+- `outcome_ref` set on successful validation. Null if validation failed.
+- `raw_ref` on `step_log` set whenever a raw payload was captured, regardless of validation outcome. Covers the `validation_failed` case where `outcome_ref = null` but `raw_ref` is populated.
+- When both exist, they resolve to the **same** RawPayload.
+
+**RawPayload fields:** `source_type` (agent_response/api_response/human_submission/webhook_callback/system_event), `content_type`, `encoding` (utf8/gzip/base64), `body` (string|byte[]), `metadata` (http_status, agent_model, token_count), `checksum` (sha256 of original body).
+
+**Compression:** StepOutcome uncompressed (structured JSON, engines query it). RawPayload compressed when `len(body) > threshold` (default 4KB); `gzip` for text/JSON.
+
+**Redaction:** Raw payload redaction happens BEFORE storage. `checksum` computed on the redacted body.
+
+**Key invariant:** `outcome_ref` is NEVER set unless schema validation passed. If validation fails, `outcome_ref = null` and step status is `validation_failed`; `raw_ref` MUST be populated.
+
+---
+
+### S4: Fencing Token — Security Reviewer Response
+
+**What is a fencing token?** A monotonically increasing integer (`claim_epoch`) assigned to each successful `claim()`. Every time a session wins `claim()`, it receives a token strictly greater than the previous holder's. The token must be presented on every subsequent write.
+
+**Distinct from the `version` CAS counter:**
+- `version` tracks **state changes** (every `save()`). Purpose: optimistic concurrency on the same valid lease.
+- `claim_epoch` tracks **claim ownership generation** (every `claim()`). Purpose: stale-lease rejection.
+
+Both are needed. Neither subsumes the other.
+
+**The write-after-reap corruption scenario (without fencing token):**
+1. Session A claims subject → `claimed_by = A`, `claim_epoch = 1`
+2. A begins long work (slow LLM call)
+3. TTL expires; reaper clears `claimed_by = NULL` (but doesn't touch `claim_epoch`)
+4. Session B claims → `claimed_by = B`, `claim_epoch = 2`
+5. B writes new state → version 3→4
+6. A finishes, calls `save(version=3)` — without fencing token, A's write might succeed (overwriting B's state)
+
+**With fencing token:**
+6. A calls `save(version=3, claim_epoch=1)` → `WHERE claim_epoch = 1` doesn't match (row has `claim_epoch = 2`) → 0 rows updated → `LeaseLostError` raised.
+
+**Schema:**
+```sql
+ALTER TABLE subjects ADD COLUMN claim_epoch INTEGER NOT NULL DEFAULT 0;
+```
+
+**Claim (returns the token):**
+```sql
+UPDATE subjects
+  SET claimed_by = :session_id, claimed_at = :now,
+      claim_epoch = claim_epoch + 1
+  WHERE id = :subject_id
+    AND (claimed_by IS NULL OR claimed_at < :cutoff)
+RETURNING claim_epoch;
+```
+
+**Save (CAS on version AND claim_epoch):**
+```sql
+UPDATE subjects
+  SET state_json = :passport_json, active_steps = :active_steps,
+      version = version + 1, updated_at = :now
+  WHERE id = :subject_id
+    AND version = :expected_version
+    AND claim_epoch = :presented_token;
+```
+
+**Reaper does NOT touch `claim_epoch`** — only nulls `claimed_by`/`claimed_at`. The next `claim()` increments past the reaped session's token.
+
+**Protocol change:**
+- `claim()` returns `int | None` (the token) instead of `bool`
+- `save()` gains `claim_epoch: int` parameter
+- All write paths (`save`, `advance`, `record_decision`) must thread the token
+
+**Errors:**
+- `LeaseLostError` — `claim_epoch` mismatch (non-retryable; must re-claim and recompute)
+- `ConcurrentWriteError` — `version` mismatch but `claim_epoch` matched (retryable)
+
+**Example scenario (concrete):**
+```
+T0  A claims S1 → token 1. A begins long review.
+T2  TTL expires. Reaper nulls claimed_by (claim_epoch stays 1).
+T3  B claims S1 → token 2. B reads S1 (version=3), computes new state.
+T4  B saves(version=3, token=2) → version 4. ✓
+T5  A saves(version=3, token=1) → 0 rows (claim_epoch=2≠1) → LeaseLostError.
+T6  A re-claims S1 → token 3. Re-reads (version=4), recomputes, saves(token=3) → version 5. ✓
+```
+
+**Corruption prevented:** Without the token, A's stale write at T5 could overwrite B's state (version CAS might match if B hadn't written yet, or if the JSON store uses flock read-then-write which doesn't enforce `claimed_by` atomically). With the token, A's write is rejected atomically.
