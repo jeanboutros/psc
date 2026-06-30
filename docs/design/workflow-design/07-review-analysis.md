@@ -611,24 +611,182 @@ reentry_budget:
 
 ### Items awaiting user decision (PROPOSED):
 
-1. **D-004:** Verdict as `NewType[str]` + dynamic JSON Schema enum from transition keys. Engine knows only `pass`/`fail`; projects extend via transition keys.
-2. **D-007:** `dispatch_retry` (global + per-state override, exponential backoff) vs `reentry_budget` (global default 3, per-gate override). Gates have NO dispatch_handler/retry. Top-level `retry_policy` removed. Hard engine caps.
-3. **D-011:** Remove `_registry` from `State`; use `StateRegistry.is_ancestor(a, b)`. Option (c) — free function.
-4. **D-013:** `advance()` absorbs parallel join+aggregation internally. No public `aggregate_outcomes` API. `parallel_progress.returned` becomes a map. `join` becomes an object. Two schemas per parallel state (`branch_schema` + `outcome_schema`).
-5. **D-024:** Passport = runtime state + step_log INDEX. StepArtifact = full outcome on filesystem. `outcomes` dict removed from passport. `vars` holds projected values only. `load_outcome(outcome_ref)` for on-demand loading.
+All 5 PROPOSED items have been decided — see Decisions Log Round 2 below.
 
 ### Items decided (awaiting implementation):
 
-D-001, D-002, D-003, D-005, D-006, D-008, D-009, D-010, D-012, D-014 (separate), D-015, D-016, D-017, D-018, D-019, D-020, D-021, D-022, D-023, D-025.
+D-001, D-002, D-003, D-004, D-005, D-006, D-007, D-008, D-009, D-010, D-011, D-012, D-013, D-014, D-015, D-016, D-017, D-018, D-019, D-020, D-021, D-022, D-023, D-024, D-025, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10.
 
 ### Security flags requiring follow-up:
 
-- D-001: Re-alignment must verify verdict; StepWriter inside transaction; mirror flag deployment-time only.
 - D-008: `cancelled_by` must be verified principal; flags append-only.
 - D-010: Idempotency key must be caller-bound (nonce or lease ownership).
-- D-015: Outcome deletion is integrity violation, not graceful; refuse advance from states with missing outcomes.
-- D-016/D-017: Undeclared fields must default to non-`public` (fail-closed).
-- D-004: Gate states may only use engine-reserved verdicts.
-- D-007: Hard engine-level caps on retry/budget.
 - D-013: Aggregation policy engine-reserved, not workflow-injectable.
-- S1, S2, S6, S10 elevated to blocking dependencies.
+- S1, S10 deferred to future security features.
+- S6: Hash chain (blockchain-style) for tamper-evidence — D-026.
+
+---
+
+## Decisions Log — Round 2 (user decisions on proposals + security points)
+
+### D-004: Verdict as NewType[str] + dynamic enum — ACCEPTED
+**Decision:** Proposal accepted. Verdict is `NewType[str]`; engine knows `pass`/`fail`; transition keys are the source of truth. Gate states may only use engine-reserved verdicts.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-007: dispatch_retry vs reentry_budget — ACCEPTED
+**Decision:** Proposal accepted. `dispatch_retry` (global, exponential backoff, per-state override) + `reentry_budget` (default 3, per-gate override). Gates have NO dispatch_handler/retry. `retry_policy` removed. Hard engine caps. Config in `psc_engine.yaml`.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-011: Remove _registry from State — ACCEPTED (Option c)
+**Decision:** Proposal accepted. Remove `_registry` from `State`. Use `StateRegistry.is_ancestor(a, b)`.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-013: advance() absorbs parallel join+aggregation — ACCEPTED
+**Decision:** Proposal accepted. `advance()` handles parallel internally. No public `aggregate_outcomes`. `returned` is a map. `join` is an object. Two schemas per parallel state.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-024: Passport = INDEX, StepArtifact = content — ACCEPTED
+**Decision:** Proposal accepted. Passport = runtime state + step_log INDEX. StepArtifact = full outcome. `outcomes` dict removed. `vars` holds projected values. `load_outcome(outcome_ref)` for on-demand loading.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-015 CORRECTION: outcome_ref is the ACTUAL outcome, not convenience
+**Decision:** CORRECTION from original D-015. `outcome_ref` is NOT "for convenience" — it's the **actual outcome** and should be handled carefully. The protocol should allow for a **string or byte array** as we might want to compress and store the outcome compressed. The **implementation decides** in what format the outcome is stored: in PostgreSQL it can be JSONB, in SQLite it can be a JSON-encoded string, etc. The `outcome_ref` is the reference to the stored outcome; the storage format is implementation-specific.
+**Date:** 2026-06-30
+**Status:** DECIDED (corrects D-015)
+
+### D-015a: StepOutcome vs AgentOutcome — distinction
+**Decision:** The user raises an important distinction: the **StepOutcome** (the data expected from a step/state, validated against the schema) is **different** from the **agent outcome or API outcome** (raw payloads saved for convenience). The `StepOutcome` is the validated, schema-conformant data the engine stores and uses. Raw agent/API payloads are a separate concern (audit/convenience). This needs to be clarified in the data model. The `outcome_ref` points to the StepOutcome (validated data), not the raw agent payload.
+**Date:** 2026-06-30
+**Status:** CLARIFICATION — needs design distinction between StepOutcome (validated, schema-conformant) and raw payload (agent/API raw output, stored for convenience)
+
+### D-001 CORRECTION: re-alignment — steplog is source of truth, not mirror
+**Decision:** CORRECTION from original D-001. The re-alignment was described wrongly. The **source of truth is the step_log**, NOT the mirror. The mirror can be regenerated from the step_log. The re-alignment process: if a StepRecord exists but the passport wasn't updated accordingly, it can correct the passport from the step_log. The mirror is derived from the passport/step_log and can always be regenerated. The `mirror.disabled` is a deployment-time global flag (not per-request, not per-workflow).
+**Date:** 2026-06-30
+**Status:** DECIDED (corrects D-001)
+
+### D-001a: StepWriter is misaligned — storage is implementation-specific
+**Decision:** The user flags that the ontology entry for StepWriter is wrong: "Computes the deterministic storage path for a step's outcome" implies filesystem only. A step's outcome is determined by the **implementation** — it can be a file OR a database record. The `OutcomeStore` protocol should abstract the storage; the implementation decides the format (file, PostgreSQL JSONB, SQLite JSON string, compressed bytes, etc.). StepWriter should be renamed to `OutcomeStore` and the protocol should allow string or byte array (for compression).
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-016 UPDATED: Default to private (fail-closed)
+**Decision:** UPDATED from original D-016. Default classification changes from `public` to **`private`**. All primitives default to `private` unless explicitly specified as `public` or `protected`. This is fail-closed. The `project()` function omits any field without an explicit `classification: "public"` or `classification: "protected"` keyword.
+**Date:** 2026-06-30
+**Status:** DECIDED (updates D-016, D-017, S2)
+
+### D-017 UPDATED: Recurse + primitives default to private
+**Decision:** UPDATED. `project()` must recurse into object children unconditionally. Classification applies to primitives only. All primitives default to `private` unless explicitly specified. This is combined with D-016's fail-closed default.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-008 UPDATED: How to track flag events without affecting original state
+**Decision:** The user asks: do we track cancelled/deferred/archived events in another append-only log, or keep the same events log but add a category to differentiate state events from flags? 
+
+**Answer (pending agent input):** This needs to be sent to the agents for a recommendation. The user's concern is that flag events (cancelled/deferred/archived) should NOT pollute the workflow state history — the history stays loyal to what actually happened. The flag is metadata about the subject, not a state transition.
+
+Options:
+(a) Separate append-only log for flag events (status_changes table)
+(b) Same events log with a `category` field ("state_event" vs "status_flag")
+(c) Flag events in the passport's `status` block with a timestamp + actor log
+
+**Date:** 2026-06-30
+**Status:** CLARIFICATION ASKED — send to agents
+
+### D-009 UPDATED: Vars collision detection at workflow load time
+**Decision:** The user adds: a check should travel the workflow and identify variables that have the same name and are present more than once as writable, and create a warning. This is a load-time validation: if two states both write to `$.findings` (via `outputs.produced`), a warning is generated. Not an error (both may legitimately contribute to the same key via merge), but a warning that a collision is possible.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-010 UPDATED: What is the proposed approach?
+**Decision:** The user asks "what is the proposed approach" for the idempotency key security concern (predictable key enables adversarial pre-submission). The Security Reviewer proposed: bind key to caller nonce or require lease ownership. The user wants a concrete proposal.
+
+**Answer (pending agent input):** Send to agents for a concrete design of the caller-bound idempotency key.
+
+**Date:** 2026-06-30
+**Status:** CLARIFICATION ASKED — send to agents
+
+### D-007 UPDATED: Retry config in context or separate config object
+**Decision:** The user adds: retry configs should be defined in the config, and either be included in the context or have an additional config object that the workflow uses for its own configuration. The workflow definition can reference the config by name; the engine resolves it at dispatch time. This keeps retry config out of the workflow JSON (which is the state machine, not infrastructure config).
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### D-014 UPDATED: record_decision should write a StepRecord
+**Decision:** The user confirms: `record_decision` stays separate (as the SW Engineer recommended) AND it should write a StepRecord. The Security Reviewer flagged that `record_decision` currently doesn't write a StepRecord — this is an audit gap. The user agrees: decisions must be in the step log.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S1: Auth model — OUT OF SCOPE (future improvement)
+**Decision:** Auth model is the responsibility of the application implementing the workflow or the API layer. Out of scope for now. Defence-in-depth to be added as future improvement.
+**Date:** 2026-06-30
+**Status:** DECIDED (deferred)
+
+### S2: Default to private — DECIDED (covered by D-016 UPDATED)
+**Decision:** Changed to `private` (fail-closed). Covered by D-016/D-017 UPDATED above.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S3: Undeclared fields pass through — should be solved
+**Decision:** Should be solved by D-016/D-017 (default to private). If not fully solved, flag again.
+**Date:** 2026-06-30
+**Status:** DECIDED (verify in implementation)
+
+### S4: Fencing token for claim/lease — EXPLAIN
+**Decision:** The user asks for an explanation of what a fencing token is. 
+
+**Explanation (pending agent input):** A fencing token is a monotonically increasing number assigned to each claim. When session A's claim is reaped (TTL expired) and session B claims the subject, B gets a higher fencing token. If A then tries to write (its claim was reaped but it doesn't know), the write includes A's old token, which doesn't match B's current token — the write is rejected. Without a fencing token, A's stale write could succeed (it only checks `claimed_by == A`, which is no longer true after reaping, but if the write arrives before the reaper updates the row, it races). Send to agents for a concrete design.
+
+**Date:** 2026-06-30
+**Status:** CLARIFICATION ASKED — send to agents
+
+### S5: Encryption at rest — implementation responsibility
+**Decision:** Encryption is the responsibility of the implementation class (the `SubjectStore` / `OutcomeStore` implementation). The protocol doesn't mandate encryption; the implementation decides. Flag this as a design decision.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S6: Tamper-evidence — hash chain (blockchain-style)
+**Decision:** Add a hashing mechanism similar to blockchain: `row_hash = hash(current_data + hash_of_previous_row)`. Each event row includes the hash of the previous row, creating a chain. Tampering with any row breaks the chain. The user asks for this or an alternative.
+**Date:** 2026-06-30
+**Status:** DECIDED (D-026 — hash chain for events table)
+
+### S7: Integrity checks and structural checks
+**Decision:** There should be integrity checks and structural checks on workflow definitions, agent files, and outcomes. This covers: (a) workflow definition validation at load time (D-019), (b) agent file existence verification (already in RosterResolver), (c) outcome schema validation (already in advance). Additional: hash verification of workflow definitions and agent files at load time.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S8: All data should be sanitised
+**Decision:** As a principle, all data should be sanitised. This covers: (a) `subject_id` sanitisation (no path traversal — SW#88), (b) `step` sanitisation, (c) string field content validation (no control characters, max length), (d) path traversal prevention in StepWriter/OutcomeStore.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S9: Adhoc workflow should be a workflow named "adhoc"
+**Decision:** The user asks: "adhoc workflow should be a workflow named adhoc. is that agreed?" — This aligns with the existing design (`workflow_id: "psc-adhoc"`). The workflow is named `psc-adhoc` (or just `adhoc`). No access control on who can create adhoc subjects (S1 is out of scope). Confirmed: adhoc is a workflow definition, not a special mode.
+**Date:** 2026-06-30
+**Status:** DECIDED
+
+### S10: Unauthenticated session_id — future security feature
+**Decision:** Added to future security features. The `session_id` authentication is deferred along with S1 (auth model). For now, `session_id` is caller-supplied; this is acceptable for the prototype.
+**Date:** 2026-06-30
+**Status:** DECIDED (deferred)
+
+---
+
+## Updated Progress Summary (Round 2)
+
+| Reviewer | Total | Pending | Clarification Asked | Decided | Implemented |
+|----------|-------|---------|--------------------|---------|-------------| 
+| SW Engineer | 89 | 63 | 3 (D-008, D-010, D-015a) | 26 | 0 |
+| Security | 36 | 0 | 1 (S4) | 36 | 0 |
+| Docs Writer | 23 | 23 | 0 | 0 | 0 |
+| **Total** | **148** | **86** | **4** | **62** | **0** |
+
+### Items awaiting clarification (to send to agents):
+
+1. **D-008:** How to track flag events without polluting workflow history — separate log, same log with category, or passport status block with timestamp log?
+2. **D-010:** Concrete design for caller-bound idempotency key (nonce or lease ownership).
+3. **D-015a:** Distinction between StepOutcome (validated, schema-conformant) and raw agent/API payload (convenience).
+4. **S4:** Explanation + concrete design for fencing token in claim/lease.
