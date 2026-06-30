@@ -343,11 +343,292 @@
 
 ---
 
-## Clarifications Needed (open items)
+---
 
-1. **D-004 (SW#3):** How to implement a Verdict enum that supports predefined engine values (`pass`/`fail`) + custom project values from the profile, validated in JSON Schema.
-2. **D-007 (SW#6):** Design for: (a) global dispatch retry + backoff (overridable), (b) loop retry budget (default 3, overridable per gate), (c) how engine knows dispatch target (agent/service/human).
-3. **D-011 (SW#10):** Present options for `State._registry` issue (guard / required arg / free function).
-4. **D-013 (SW#12):** Detailed design for parallel-join inside `advance()`.
-5. **D-014 (SW#13):** Can `record_decision` be unified with `advance`?
-6. **D-024 (SW#22):** Clarify the passport vs steps-written distinction after removing the `outcomes` dict.
+## Agent Responses to Clarifications (Round 1)
+
+> Reviewed by: Architect/SW Engineer, SW Engineer, Data Architect, Security Reviewer.
+> All responses recorded verbatim — no synthesis.
+
+---
+
+### D-004: Verdict Enum Generalisation — Architect Response
+
+**Status:** PROPOSED — awaiting user decision
+
+**Proposal:** The engine defines exactly **two** verdicts that all workflows must support: `pass` and `fail`. Everything else (`classified`, `synthesized`, `adr_written`, etc.) is a **project-defined verdict** that the engine treats as an opaque string label.
+
+**Mechanism:**
+- The `Verdict` type is a `NewType[str]` (not a fixed enum) — open set validated externally by JSON Schema.
+- The valid verdicts for a state = the keys of its `transitions` dict + engine defaults (`pass`, `fail`).
+- The profile may optionally declare a `verdict_registry` for documentation, but the transition keys are the source of truth.
+- The JSON Schema `enum` for `verdict` is built dynamically per-state by `VerdictSchemaBuilder`:
+
+```python
+class VerdictSchemaBuilder:
+    ENGINE_VERDICTS = frozenset({"pass", "fail"})
+    
+    def build_enum(self, state_transitions: dict[str, Transition]) -> list[str]:
+        transition_keys = set(state_transitions.keys())
+        valid = self.ENGINE_VERDICTS | transition_keys
+        return sorted(valid)
+    
+    def materialise_schema(self, base_schema: dict, state_transitions: dict) -> dict:
+        schema = copy.deepcopy(base_schema)
+        schema["properties"]["verdict"]["enum"] = self.build_enum(state_transitions)
+        return schema
+```
+
+- Transition lookup: `state.transitions.get(verdict)` — plain dict lookup, no enum dispatch table.
+- Validation: two-layered — load-time (verdict keys match `^[a-z][a-z0-9_]*$`) + runtime (outcome's verdict is in the materialised enum).
+- Rust/Go reimplementation: `type Verdict = String` + `const ENGINE_PASS: &str = "pass"` — no enum type needed.
+
+**Rationale:** A `StrEnum` is a closed set requiring code change. A `NewType[str]` is an open set validated by JSON Schema, matching the spec (workflow JSON defines valid values; Python carries the string). This is the same pattern as ASL's `Choice` rules.
+
+---
+
+### D-007: Dispatch Retry vs Loop Retry — Architect Response
+
+**Status:** PROPOSED — awaiting user decision
+
+**Two distinct mechanisms:**
+
+| Dimension | Dispatch Retry | Re-entry Budget (renamed from "Loop Retry") |
+|-----------|---------------|---------------------------------------------|
+| Name | `dispatch_retry` | `reentry_budget` |
+| Trigger | `DispatchHandler.dispatch()` raises `DispatchError` (timeout, crash, OOM, network) | Gate evaluation returns `fail` verdict; transition has `loop: true` |
+| Scope | Per-state (any task/parallel with dispatch_handler) | Per-gate (only gate states) |
+| Budget | Global default (configurable); overridable per-state | Global default 3; overridable per-gate via `gate_config.reentry_budget` |
+| Backoff | Exponential with jitter | None — loop-back requires substantive work (fix code, re-review) |
+| Counter | `meta.attempt` (increments within same entry) | `meta.entry_count` (increments on each state entry) |
+| On exhaustion | `fail` verdict → route on `fail` transition or escalate | `exhausted` verdict → route to `ESCALATE` |
+| Event fired | `retry.attempted` | `loop.triggered` |
+
+**Why "Re-entry Budget" instead of "Loop Retry":** "Retry" implies the same operation repeated. A loop-back sends the workflow to an *earlier* state to do different work. "Re-entry" captures that the gate is re-entered after the loop-back completes. "Budget" captures it's a finite resource.
+
+**Config additions (`psc_engine.yaml`):**
+```yaml
+dispatch_retry:
+  max_attempts: 3
+  backoff:
+    strategy: exponential_jitter
+    initial_ms: 1000
+    multiplier: 2.0
+    max_ms: 30000
+  on_exhaust: fail
+
+reentry_budget:
+  default: 3
+  on_exhaust: escalate
+```
+
+**Gates confirmed:** NO `dispatch_handler`, NO `retry` block. Gates are driven by `gate_config.reentry_budget`. The top-level `retry_policy` is **removed** (it duplicated gate_config). Gate states retain: `name`, `title`, `phase`, `step`, `kind: "gate"`, `agent` (audit), `gate_config`, `transitions` (with `pass`/`fail`/`exhausted`).
+
+**Dispatch target resolution:** The `dispatch_handler` field on the state names a handler in `DispatcherRegistry`. Built-ins: `engine.subagent_dispatch` (agent), `engine.human_form_dispatch` (human), `engine.system_webhook_dispatch` (service). Unregistered handler → `HandlerNotRegistered` raised at load time.
+
+**Security flag:** Hard engine-level cap required (e.g., `ENGINE_MAX_DISPATCH_ATTEMPTS = 10`, `ENGINE_MAX_REENTRY_BUDGET = 10`). Per-state overrides can reduce but not exceed. `max_attempts: 0` or negative rejected at load time.
+
+---
+
+### D-011: State._registry Issue — Architect Response
+
+**Status:** PROPOSED — Option (c) recommended
+
+**The issue:** `State.__lt__` calls `self._registry._is_ancestor(...)` but `_registry` defaults to `None`. Any comparison on a State constructed outside the registry raises `AttributeError`. Also violates Dependency Inversion (domain → infrastructure).
+
+**Three options:**
+
+| Option | Pros | Cons |
+|--------|------|------|
+| (a) Guard with `IncomparableStates` | Minimal change; clear error | Coupling remains; still uncomparable outside registry |
+| (b) Required constructor arg | Impossible to construct uncomparable State | Serialisation breaks; heavier test setup |
+| (c) Free function — remove `_registry` entirely | Clean architecture; fully serialisable; testable; idiomatic Rust match | Loses `s_a0 < s_a1` ergonomic |
+
+**Recommendation: Option (c)** — Remove `_registry` from `State`. Remove `__lt__` from `State`. Add `StateRegistry.is_ancestor(a, b) -> bool`.
+
+**Justification:**
+1. Clean architecture — a node cannot know its ancestry without the graph.
+2. Serialisability — `State` round-trips through JSON without `_registry` leak.
+3. Testability — States constructed freely in tests; `registry.is_ancestor()` for graph semantics.
+4. The spec says `__lt__` is a Python ergonomic; a Rust `PartialOrd` would live on the registry, not the node.
+5. The ergonomic loss is minimal — `registry.is_ancestor(A0, A3)` is clearer than `A0 < A3`.
+
+---
+
+### D-013: Parallel Advance Mechanism — SW Engineer Response
+
+**Status:** PROPOSED — awaiting user decision
+
+**Key change:** `advance()` absorbs the entire fan-out → join → aggregate → transition lifecycle. No public `aggregate_outcomes` API. The caller only calls `advance(subject_id, branch_outcome)` once per branch return.
+
+**Updated `advance()` flow for parallel state (11 steps):**
+1. Load passport (atomic claim/version-CAS).
+2. Resolve current state. Assert `kind == "parallel"`.
+3. Compute idempotency key = `sha256(subject_id + state + entry_count + branch_id + attempt)`.
+4. Idempotency check — if StepRecord with this key exists, short-circuit.
+5. Validate branch outcome against `branch_schema` (NOT the composite schema).
+6. Write branch outcome via StepWriter.
+7. Update `parallel_progress` atomically — remove branch_id from `pending`, add to `returned` with outcome_ref + verdict.
+8. Evaluate join: `all` → satisfied when `pending == []`; `quorum:N` → satisfied when `len(returned) >= N`.
+9. If join NOT satisfied: save passport, fire `parallel.branch.completed`, return `{advanced: false, join_satisfied: false, pending: [...]}`.
+10. If join satisfied: compute composite via `aggregation_rule` (from registry), validate composite against `outcome_schema`, write composite StepRecord, fire standard hook sequence, update passport (state.current = target, clear parallel_progress, merge vars), save + regenerate mirror.
+11. Return `{advanced: true, new_state, composite, join_satisfied: true}`.
+
+**`parallel_progress` data structure (updated):**
+- `returned` is now a **map** (not array): `{branch_id: {verdict, outcome_ref, uuid, timestamp}}` — O(1) lookup.
+- `join` is an **object** (not string): `{"type": "all"}` or `{"type": "quorum", "n": 2, "on_satisfied": "cancel_pending"}`.
+- `on_satisfied` controls pending-branch fate: `"cancel_pending"` (default — late outcomes rejected), `"supersede"` (recompute composite), `"discard_late"` (silently discard).
+
+**Dynamic fan_out:** `$roster` resolves to `ctx.vars["domain_classification"]["roster"]` at state entry (not at branch return). The roster is pinned by the A0 decision; never re-resolved.
+
+**Two schemas per parallel state:** `branch_schema` (validated per-branch at step 5) + `outcome_schema` (validated on composite at step 10). For non-parallel states, `branch_schema` is absent.
+
+**Aggregation rule:** Project-specific (`psc.aggregation.specialist_review`), resolved from `AggregationRegistry`. Built-ins: `engine.aggregation.verdict_all_pass`, `engine.aggregation.verdict_unanimous`. The engine calls `rule.aggregate(...)`, validates result against `outcome_schema`, reads `composite["verdict"]` for routing. The engine never interprets PSC fields.
+
+**Crashed specialist recovery:** Caller re-dispatches by step ID (`A1#design`) with `attempt+1`. New idempotency key (attempt incremented). Branch retry budget (default 3) — if exceeded, branch marked `failed` with `verdict: "fail"`.
+
+**Late-arriving outcome after join:** `advance()` checks if state has advanced past the parallel state. If so, outcome is written to disk (audit trail) but does NOT affect the composite or state transition. Returns `STATUS: JOIN_ALREADY_SATISFIED`.
+
+**Security flag:** Aggregation policy (`all` vs `quorum:N`) must be engine-reserved, not workflow-injectable. Only the threshold `N` is configurable and clamped to `[1, len(expected)]`. A malicious branch cannot inject a composite verdict — the aggregation rule is engine-controlled.
+
+---
+
+### D-014: record_decision Unified with advance? — SW Engineer Response
+
+**Status:** DECIDED — Separate (Option B)
+
+**Recommendation:** `record_decision` remains a first-class function, distinct from `advance`.
+
+**Why not unified:**
+1. `verdict` is meaningless for a decision — a decision routes via `routing_rule`, not via `transitions[verdict]`. Forcing `verdict: "pass"` is a lie; `"decided"` is a synthetic filler.
+2. Routing logic bifurcates inside `advance()` (if decision → routing_rule; else → transitions[verdict]).
+3. Schema validation is conditional — `advance()` would need to choose `outcome_schema` vs `decision_schema` based on `state.kind`.
+4. Caller ergonomics worsen — must construct an `outcome` object with filler `verdict`.
+5. Hook sequence is cleaner separate: `decision.recorded` → `state.exited` → domain event → `state.entered`.
+
+**Refined `record_decision` flow:**
+1. Load passport (claim/CAS).
+2. Assert `state.kind == "decision_required"` and `is_decision_pending == true`.
+3. Idempotency key = `sha256(subject_id + state + entry_count + null + 0)`.
+4. Validate `decision_object` against `state.decision_schema` (the discriminated union).
+5. Evaluate `routing_rule` (SQL-CASE-style from D-006) — first match → target + event_name.
+6. Write decision via StepWriter (decision_object IS the outcome for audit).
+7. Fire hooks: `decision.recorded` → `state.exited` → domain event → `transition.triggered` → `state.entered`.
+8. Update passport: `state.current = target`, `is_decision_pending = false`, append StepRecord (with `verdict: "decided"` as metadata), apply outputs mapping.
+9. Save + regenerate mirror.
+10. Return `{new_state, terminal, mirror_updated}`.
+
+**`verdict: "decided"` on StepRecord:** This is a metadata field telling the audit trail "this step was a decision, not a task outcome." It is NOT a routing key — routing was done by the `routing_rule`. This is an engine-level verdict (like `pass`/`fail`), not PSC-specific.
+
+**Security note:** The Security Reviewer noted that unifying would be better for access control (one entry point). However, the SW Engineer counters that two focused functions with distinct validation paths is cleaner and the security concern is addressed by requiring claim ownership for both.
+
+---
+
+### D-024: Passport vs Steps-Written Distinction — Data Architect Response
+
+**Status:** PROPOSED — awaiting user decision
+
+**The separation:**
+
+| Aspect | Passport | StepArtifact |
+|--------|----------|--------------|
+| What it is | Runtime state — what the engine needs for the next routing decision | Outcome content — the full record of what one step produced |
+| Size | Small, bounded | Large, unbounded (findings, recommendations, deliverables, references) |
+| Load cost | Fast — single JSON read | On-demand — loaded only when content is required |
+| Storage | `passports/<subject>.json` + SQLite `state_json` | `outcomes/<subject>/<step>/<uuid7>.json` on filesystem |
+| Mutability | Mutated on every `advance()`; version-bumped | Immutable once written; never rewritten |
+| Engine reads | `state.current`, `vars`, `retries_used`, `parallel_progress`, `step_log` (INDEX only), decisions, status flags | `verdict` via `step_log[].verdict` (no need to load artifact); artifact loaded only for queries/display |
+
+**The passport's `step_log` is an INDEX, never a container.** Each entry holds enough metadata to (a) route without loading the artifact and (b) locate the artifact when needed. The artifact content never appears inline.
+
+**Updated passport JSON (outcomes removed):**
+- `outcomes` dict → **removed**. The `step_log` index + `load_outcome(outcome_ref)` is the single source of truth.
+- `skips` array → **removed** (D-005 removed skip).
+- `version_pins` → **removed** (D-023).
+- `is_adhoc` → **removed** (D-025).
+- `retries` → renamed to `retries_used` (D-022 — consumed only, not budget).
+- `status` block → **added** (D-008 — cancelled/deferred/archived flags).
+- `event_name` on each `step_log` entry → **added** (needed for audit from index alone).
+
+**`vars` vs outcomes:**
+- `vars` holds **projected** values the engine needs for routing (e.g., `findings[*].disposition` — just the disposition field, not the full Finding objects).
+- The full Finding objects (with description, suggested_fix, references) live only in the StepArtifact.
+- The mapping mechanism is `outputs.produced` (JSONPath read → JSON Pointer write to `vars`).
+
+**Query model:**
+- `query(subject_id, what="step_log")` → returns the index (fast, no artifact loading).
+- `load_outcome(subject_id, uuid)` → loads a single StepArtifact (on demand).
+- `query(subject_id, what="step_log", expand=true)` → index + inlined artifacts (for small logs; use sparingly).
+
+**Logical data model (Mermaid ER):**
+- `Subject 1—1 Passport` (runtime state)
+- `Passport 1—N StepLogEntry` (index)
+- `StepLogEntry N—1 StepArtifact` (via `outcome_ref`; join key = `uuid`)
+
+**Flags raised by Data Architect:**
+1. D-008: Terminal detection must check status flags (`cancelled`/`deferred`/`archived`), not just state kind. A subject with `cancelled: true` is terminal regardless of `state.current`.
+2. D-008: `defer`/`cancel`/`archive` decisions need a transition `action` variant (status mutation), not just `target`. New mechanism — the `defer` decision in `route.c4` can't target `DEFERRED` (no such state). Raise as follow-up.
+3. D-010: Idempotency key valid **only if** `step` includes `#specialist` suffix for parallel branches. Without the suffix, branches collide.
+4. D-017: `additionalProperties`/`patternProperties` with object type + classification should be rejected at load time (primitives only).
+5. D-022: `retries_used` should be lazily initialised (entries appear on first use), not pre-populated with all gates/tiers at 0.
+
+---
+
+### Security Reviewer — Validation of All Decided Points
+
+| # | Decision | Verdict | Key Risk / Fix |
+|---|----------|---------|----------------|
+| 1 | D-001 atomicity+re-alignment+mirror flag | SECURITY IMPLICATIONS | Re-alignment must verify verdict against transitions before "correcting"; StepWriter must write inside the DB transaction; mirror flag must log `mirror.disabled` event and be deployment-time only, not per-request |
+| 2 | D-005 remove skip | SECURE | Closes S27 (skip all gates); ensure `route.user_disposition` `skip` field and `Transition.skip` are actually removed from workflow JSON and dataclass |
+| 3 | D-008 flags not states | SECURITY IMPLICATIONS | `cancelled_by` must be a verified principal, not self-reported; flag-setting must require claim ownership; flags must be append-only (no "un-cancel"); setting `cancelled: false` to resume must be forbidden |
+| 4 | D-009 freeze context + deep-copy | SECURE | Join-merge must detect `vars` key collisions across branches and raise, not silently overwrite |
+| 5 | D-010 deterministic idempotency key | SECURITY IMPLICATIONS | Predictable key enables adversarial pre-submission — attacker reads passport, pre-computes key, submits conflicting outcome; **fix:** bind key to caller nonce or require lease ownership before `advance()` |
+| 6 | D-015 outcome_ref deletion graceful | SECURITY IMPLICATIONS | Deletion is an integrity violation, not a graceful state; log to events table; refuse to `advance` from states whose outcome is missing (can't re-verify verdict); acceptable for read ops but not for write/advance |
+| 7 | D-016 project() handles additionalProperties | SECURE (conditional) | Only if `additionalProperties` defaults to non-`public`; current `field_schema is None` passthrough (S3) must be changed to omit/redact by default |
+| 8 | D-017 classification on primitives only | SECURITY IMPLICATIONS | Safe only if `project()` recurses into object children unconditionally; current code passes undeclared keys through; **fix:** undeclared keys at any depth must default to non-`public` |
+
+### Security Reviewer — Clarification Security Points
+
+| # | Clarification | Verdict | Key Risk / Fix |
+|---|-------------|---------|----------------|
+| 9 | D-004 custom verdicts from profile | SECURITY IMPLICATIONS | Gate states may ONLY transition on engine-reserved verdicts (`pass`/`fail`/`exhausted`); profile verdicts cannot shadow reserved names; load-time validation required; a malicious profile injecting `skip_gate` verdict to bypass all gates must be rejected |
+| 10 | D-007 per-state retry override | SECURITY IMPLICATIONS | Hard engine-level cap required (`ENGINE_MAX_DISPATCH_ATTEMPTS = 10`, `ENGINE_MAX_REENTRY_BUDGET = 10`); per-state overrides can reduce but not exceed; `max_attempts: 0` or negative rejected at load time |
+| 11 | D-013 aggregation inside advance() | SECURITY IMPLICATIONS | Aggregation policy (`all` vs `quorum:N`) must be engine-reserved, not workflow-injectable; only threshold `N` is configurable and clamped to `[1, len(expected)]`; a malicious branch cannot inject composite verdict — aggregation rule is engine-controlled |
+| 12 | D-014 unify record_decision with advance | SECURE (one entry point) | But SW Engineer recommends separate; security note: if separate, ensure `record_decision` also applies projection/redaction and writes a StepRecord (currently it doesn't write a StepRecord — audit gap) |
+
+**Cross-cutting dependency:** The Security Reviewer flags that decisions 5, 7, 8, 9, 11 all depend on unresolved security gaps S1 (no auth model), S2 (fail-open default classification), S6 (no tamper-evidence), S10 (unauthenticated session_id). The engine cannot be considered secure until those are addressed. S1, S2, S6, S10 should be elevated to blocking dependencies before any of D-001/D-008/D-010/D-015 is marked IMPLEMENTED.
+
+---
+
+## Updated Progress Summary
+
+| Reviewer | Total | Pending | Clarification Asked | Proposed (awaiting user) | Decided | Implemented |
+|----------|-------|---------|--------------------|--------------------------|---------|-------------| 
+| SW Engineer | 89 | 66 | 0 | 4 (D-004, D-007, D-011, D-013) | 21 (+2 new: x, xx) | 0 |
+| Security | 36 | 32 | 0 | 0 | 4 (D-005, D-009, D-016, D-014) | 0 |
+| Docs Writer | 23 | 23 | 0 | 1 (D-024) | 0 | 0 |
+| **Total** | **148** | **121** | **0** | **5** | **25** | **0** |
+
+### Items awaiting user decision (PROPOSED):
+
+1. **D-004:** Verdict as `NewType[str]` + dynamic JSON Schema enum from transition keys. Engine knows only `pass`/`fail`; projects extend via transition keys.
+2. **D-007:** `dispatch_retry` (global + per-state override, exponential backoff) vs `reentry_budget` (global default 3, per-gate override). Gates have NO dispatch_handler/retry. Top-level `retry_policy` removed. Hard engine caps.
+3. **D-011:** Remove `_registry` from `State`; use `StateRegistry.is_ancestor(a, b)`. Option (c) — free function.
+4. **D-013:** `advance()` absorbs parallel join+aggregation internally. No public `aggregate_outcomes` API. `parallel_progress.returned` becomes a map. `join` becomes an object. Two schemas per parallel state (`branch_schema` + `outcome_schema`).
+5. **D-024:** Passport = runtime state + step_log INDEX. StepArtifact = full outcome on filesystem. `outcomes` dict removed from passport. `vars` holds projected values only. `load_outcome(outcome_ref)` for on-demand loading.
+
+### Items decided (awaiting implementation):
+
+D-001, D-002, D-003, D-005, D-006, D-008, D-009, D-010, D-012, D-014 (separate), D-015, D-016, D-017, D-018, D-019, D-020, D-021, D-022, D-023, D-025.
+
+### Security flags requiring follow-up:
+
+- D-001: Re-alignment must verify verdict; StepWriter inside transaction; mirror flag deployment-time only.
+- D-008: `cancelled_by` must be verified principal; flags append-only.
+- D-010: Idempotency key must be caller-bound (nonce or lease ownership).
+- D-015: Outcome deletion is integrity violation, not graceful; refuse advance from states with missing outcomes.
+- D-016/D-017: Undeclared fields must default to non-`public` (fail-closed).
+- D-004: Gate states may only use engine-reserved verdicts.
+- D-007: Hard engine-level caps on retry/budget.
+- D-013: Aggregation policy engine-reserved, not workflow-injectable.
+- S1, S2, S6, S10 elevated to blocking dependencies.
