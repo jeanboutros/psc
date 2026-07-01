@@ -241,3 +241,52 @@ noted otherwise.
     https://docs.aws.amazon.com/step-functions/latest/dg/concepts.html —
     fetched. `StateEntered`, `StateExited`, `ExecutionStarted`,
     `ExecutionSucceeded`, `ExecutionFailed` events.
+
+---
+
+## Hash Chains and Tamper-Evidence
+
+46. **Nakamoto, S.** "Bitcoin: A Peer-to-Peer Electronic Cash System." 2008.
+    https://bitcoin.org/bitcoin.pdf — referenced. §3 (Timestamp Server):
+    each block contains the hash of the previous block, forming a chain;
+    tampering with any block requires recomputing all subsequent blocks.
+    Precedent for the events table hash chain (`row_hash = H(current_data +
+    hash_of_previous_row)`).
+
+---
+
+## Fencing Tokens and Distributed Locking
+
+47. **Kleppmann, M.** "How to do distributed locking." 8 February 2016.
+    https://martin.kleppmann.com/2016/02/08/how-to-do-distributed-locking.html
+    — fetched. Fencing token pattern: a monotonically increasing token
+    assigned on each lock acquisition; every write includes the token;
+    the resource rejects writes whose token is less than the last-seen
+    token. Precedent for `claim_epoch` in the claim/lease protocol.
+
+---
+
+## SQL CASE Expression
+
+48. **PostgreSQL Global Development Group.** *PostgreSQL 17 —
+    Conditional Expressions (CASE).*
+    https://www.postgresql.org/docs/17/functions-conditional.html —
+    fetched. SQL `CASE WHEN condition THEN result ... ELSE default END`
+    expression. Precedent for the routing rule DSL: one shape, flat
+    evaluation, first-match-wins semantics.
+
+---
+
+## Python Type System
+
+49. **Python Software Foundation.** *PEP 484 — Type Hints.*
+    https://peps.python.org/pep-0484/ — referenced. `NewType` for creating
+    distinct types with minimal runtime overhead. Precedent for
+    `Verdict = NewType("Verdict", str)` — an open set validated externally
+    by JSON Schema rather than a closed `StrEnum`.
+
+50. **Python Software Foundation.** *Python 3.14 — hashlib module.*
+    https://docs.python.org/3.14/library/hashlib.html — fetched.
+    `hashlib.sha256()` for cryptographic hashing used in idempotency keys
+    (`sha256(subject_id + step + entry_count + attempt)`) and hash chain
+    row hashes.

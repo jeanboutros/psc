@@ -5,6 +5,18 @@
 
 ---
 
+## Security Principle: HTML-Escape All Dynamic Content
+
+The UI MUST HTML-escape all dynamic content before rendering. This includes
+outcome fields, finding descriptions, agent names, subject titles, decision
+rationales, and any other user- or agent-supplied strings. Failure to escape
+dynamic content creates a stored XSS vector: a malicious agent outcome or
+finding description could inject scripts that execute in the context of any
+user viewing the subject. Escaping is the responsibility of the UI layer and
+applies to every view that renders dynamic content.
+
+---
+
 ## 5.1 Views
 
 ### 1. Dashboard — Subject List
@@ -13,9 +25,10 @@
 workflows.
 
 **Shows:**
-- Table of subjects: ID, type, title, workflow, current state, status (active/completed/blocked/escalated/cancelled), last updated
+- Table of subjects: ID, type, title, workflow, current state, status (active/completed/blocked/escalated), status flags (cancelled/deferred/archived), last updated
+- Status flags are shown alongside the current state — they are metadata about the subject, not terminal states. A cancelled subject's `state.current` stays at whatever state it was at when the flag was set.
 - If subject is at a parallel state, expandable sub-items showing each parallel branch (e.g. `A1#security`, `A1#test`, `A1#docs`) with per-branch status (pending/returned)
-- Filters: by status, by workflow, by subject_type, by phase
+- Filters: by status, by status flag, by workflow, by subject_type, by phase
 - Search bar (full-text across titles)
 
 **Actions:**
@@ -23,7 +36,7 @@ workflows.
 - "New Subject" button → opens workflow selection dialog
 
 **API calls:**
-- `query(subject_id=None, what="all")` — list all subjects with current state
+- `query(subject_id=None, what=QueryWhat.ALL)` — list all subjects with current state
 - `current_state(subject_id)` for each — to get parallel progress
 
 ### 2. Subject Detail — Workflow Graph
@@ -34,16 +47,17 @@ workflows.
 - Workflow visualisation (Mermaid state diagram rendered) with current state highlighted
 - Subject metadata: ID, type, title, request, created_at, workflow_id + version
 - Current state name, kind, phase
+- Status flags (cancelled/deferred/archived) displayed alongside the current state
 - If decision_pending: a callout "Decision required — waiting for [user/PM]"
 - If parallel: the fan-out branches as a list with per-branch status
 
 **Actions:**
 - Click a state in the graph → shows that state's detail (inputs/outputs/transitions)
-- "Cancel Subject" button → calls `cancel_subject`
+- "Cancel Subject" button → calls `cancel_subject` (sets status flag, does not change `state.current`)
 - "View History" button → navigates to History Timeline (view 4)
 
 **API calls:**
-- `current_state(subject_id)` — current state + metadata
+- `current_state(subject_id)` — current state + metadata + status flags
 - `load_workflow(workflow_id, version)` — for the graph visualisation
 
 ### 3. State Interaction — The Active State Form
@@ -64,12 +78,13 @@ the outputs.
 
 **Actions:**
 - Fill the output form → "Submit Outcome" → calls `advance(subject_id, outcome)`
-- For decision_required states: "Submit Decision" → calls `record_decision`
-- For gate states: shows tier results, retry budget; "Submit Gate Result"
+- For decision_required states: "Submit Decision" → calls `record_decision(subject_id, decision)` — the engine reads the current state from the passport; the caller MUST NOT pass it explicitly.
+- For gate states: gate evaluation is internal to `advance()`; the UI shows tier results and reentry budget but does not submit gate results separately
 
 **API calls:**
 - `possible_outcomes(subject_id)` — outcome keys + schemas + inputs
-- `advance(subject_id, outcome)` or `record_decision(subject_id, state, decision)`
+- `advance(subject_id, outcome)` — for task and gate states
+- `record_decision(subject_id, decision)` — for decision_required states (separate API)
 
 ### 4. History Timeline — Full Step Log
 
@@ -79,21 +94,23 @@ the outputs.
 - Vertical timeline of every StepRecord, ordered by UUIDv7 (chronological)
 - Each entry: UUID (truncated), step, agent, from_state, verdict, event_name,
   timestamp, entry_count, attempt
-- Click an entry → loads the AgentOutcome JSON from `outcome_ref` (view 5)
+- Click an entry → loads the StepOutcome JSON via `load_outcome(subject_id, outcome_ref)` (view 5)
 - Loop-backs clearly marked (e.g. "↻ re-entered from A3 (RC-2)")
-- Gate results inline (tier, pass/fail, attempt/budget)
+- Gate results inline (tier, pass/fail, attempt/reentry_budget)
 - Decisions inline (decision object fields)
+- Status flag changes (cancelled/deferred/archived) shown from the `status_log` — these are flag events, not state transitions
 
 **API calls:**
 - `query(subject_id, what="step_log")`
-- `load(outcome_ref)` on StepWriter to load the AgentOutcome
+- `load_outcome(subject_id, outcome_ref)` on the engine to load the StepOutcome
 
-### 5. Outcome Viewer — AgentOutcome Detail
+### 5. Outcome Viewer — StepOutcome Detail
 
 **Purpose:** View the full outcome JSON for a specific step.
 
 **Shows:**
-- Full AgentOutcome JSON, rendered as a readable form (not raw JSON)
+- Full StepOutcome JSON, rendered as a readable form (not raw JSON)
+- The StepOutcome is the validated, schema-conformant data the engine stores and uses for routing. Raw payload (unprocessed agent/API output) may also be available for forensic review via `raw_ref`.
 - PSC-specific fields rendered: findings (table with confidence/severity/category),
   recommendations, gaps, deliverables, references, self-audit, self-reflection,
   OWASP expansion
@@ -101,7 +118,7 @@ the outputs.
   🛡️ protected (redacted in events), 🌐 public
 
 **API calls:**
-- `load(outcome_ref)` on StepWriter
+- `load_outcome(subject_id, outcome_ref)` on the engine
 
 ### 6. Workflow Definition Viewer
 
@@ -111,7 +128,7 @@ the outputs.
 - Mermaid state diagram rendered from the workflow definition
 - Click a state → shows: kind, phase, step, dispatch_handler, outcome_schema,
   inputs (JSONPath), outputs (path mapping), transitions (with event_name),
-  retry config
+  reentry_budget (for gate states), routing_rule (SQL-CASE-style, for decision_required states)
 - "Validate Workflow" button → calls `load_workflow` and shows validation errors
 
 **API calls:**
@@ -143,15 +160,16 @@ the outputs.
 - "Submit All Dispositions" button
 
 **API calls:**
-- `record_decision(subject_id, "A2c", {findings: [{finding_id, disposition}]})`
+- `record_decision(subject_id, {findings: [{finding_id, disposition}]})` — called while subject is at A2c (engine validates state.kind == "decision_required")
 
 ### 9. Gate Results
 
-**Purpose:** Per-gate view showing tiers, retry budget, findings per tier.
+**Purpose:** Per-gate view showing tiers, reentry budget, findings per tier.
 
 **Shows:**
-- For each gate (A3, B2a, B3a, C3, CR2): tiers, retry budget per tier,
+- For each gate (A3, B2a, B3a, C3, CR2): tiers, reentry budget per tier,
   attempts consumed, pass/fail
+- Gates are driven by `gate_config.reentry_budget` — no `dispatch_handler` or `retry` block
 - Correction records (RC-1..RC-5, root cause, corrective action)
 - If exhausted: escalation notice
 
@@ -161,19 +179,20 @@ the outputs.
 
 ### 10. Roster Selection (A0)
 
-**Purpose:** For A0 — checklist of proposed specialists.
+**Purpose:** For A0 — a `decision_required` state where the user confirms the
+roster of specialists.
 
 **Shows:**
 - Proposed roster (defaults pre-selected from config + domain signals)
 - Available specialists (all `.md` files in `agents_folder`)
 - User can deselect, add from available, or add a custom entry
 - Minimum specialists cannot be deselected
-- "Confirm Roster" button
+- "Confirm Roster" button — submits a `decision.roster_confirmation` decision
 
 **API calls:**
 - `propose_roster(subject_id, domain_signals)`
 - `validate_roster(subject_id, selection)`
-- `record_decision(subject_id, "A0", {roster: [...], rationale: "..."})`
+- `record_decision(subject_id, {roster: [...], rationale: "..."})` — called while subject is at A0
 
 ### 11. Parallel Progress
 
@@ -183,6 +202,7 @@ the outputs.
 - Expected specialists, returned (✓), pending (⏳)
 - Per-specialist: click to view their outcome (view 5)
 - "Re-dispatch" button for a crashed/pending specialist (by step ID)
+- `advance()` handles parallel join and aggregation internally — no separate `aggregate_outcomes` call
 
 **API calls:**
 - `current_state(subject_id)` → `parallel_progress`
@@ -193,12 +213,12 @@ the outputs.
 
 **Shows:**
 - Blocked subjects (prior step unstamped)
-- Escalated subjects (retries exhausted)
+- Escalated subjects (reentry budget exhausted)
 - Decisions pending (awaiting user/PM)
-- Stale claims (reaper released)
+- Stale claims (reaper released — filter on `SUBJECT_RELEASED` events with `reason == "lease_ttl_exceeded"`, or query `claim_log` where `reason='lease_ttl_exceeded'`)
 
 **API calls:**
-- `query(what="blocked")`, `query(what="escalated")`, `query(what="pending")`
+- `query(subject_id=None, what=QueryWhat.BLOCKED)`, `query(subject_id=None, what=QueryWhat.ESCALATED)`, `query(subject_id=None, what=QueryWhat.PENDING)`
 
 ---
 
@@ -253,9 +273,10 @@ flowchart TD
 flowchart TD
     SD[Subject Detail] -->|Cancel button| CONF{Confirm cancel?}
     CONF -- yes --> CAN[cancel_subject API call]
-    CAN --> REL[Claim released]
+    CAN --> FLG[Status flag set: cancelled=true]
+    FLG --> REL[Claim released]
     REL --> EVT[WORKFLOW_CANCELLED fired]
-    EVT --> DASH[Back to Dashboard — subject shows CANCELLED]
+    EVT --> DASH[Back to Dashboard — subject shows cancelled flag alongside current state]
     CONF -- no --> SD
 ```
 
@@ -267,7 +288,7 @@ flowchart TD
     WF --> TY[Select subject type: ticket / survey / process / review]
     TY --> TI[Enter title + request]
     TI --> CR[PM creates subject: snapshot workflow, write passport]
-    CR --> A0[Subject at start_at state]
+    CR --> A0[Subject at A0 — decision_required: roster confirmation]
     A0 --> SD[Subject Detail page]
 ```
 
@@ -280,8 +301,8 @@ flowchart TD
 | Dashboard | `query(what="all")` | Read |
 | Subject Detail | `current_state`, `load_workflow` | Read |
 | State Interaction | `possible_outcomes`, `advance`, `record_decision` | Read + Write |
-| History Timeline | `query(what="step_log")`, `load(outcome_ref)` | Read |
-| Outcome Viewer | `load(outcome_ref)` | Read |
+| History Timeline | `query(what="step_log")`, `load_outcome(subject_id, outcome_ref)` | Read |
+| Outcome Viewer | `load_outcome(subject_id, outcome_ref)` | Read |
 | Workflow Definition Viewer | `load_workflow` | Read |
 | Findings Browser | `query(what="step_log")` + outcome loading | Read |
 | Decision Register | `record_decision` | Write |
@@ -289,5 +310,6 @@ flowchart TD
 | Roster Selection | `propose_roster`, `validate_roster`, `record_decision` | Read + Write |
 | Parallel Progress | `current_state` | Read |
 | Notifications | `query(what="blocked/escalated/pending")` | Read |
-| Cancel | `cancel_subject` | Write |
-| Claim/Release | `claim`, `release` | Write |
+| New Subject | `new_subject(workflow_id, subject_type, title, request)` | Write |
+| Cancel | `cancel_subject(subject_id, reason, cancelled_by)` — sets status flag, does not change state | Write |
+| Claim/Release | `claim(subject_id, session_id)` → `ClaimResult` (includes `claim_epoch` token), `release(subject_id, session_id)` | Write |
